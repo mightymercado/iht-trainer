@@ -1,0 +1,2016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IHT Trainer</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫁</text></svg>">
+<style>
+  :root{
+    color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19; --surface2:#232322;
+    --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --baseline:#383835; --ring:rgba(255,255,255,.10);
+    --spo2:#3987e5; --hrc:#199e70; --hrv:#d95926;
+    --hyp:#3987e5; --rec:#0ca30c;
+    --warn:#fab219; --serious:#ec835a; --crit:#d03b3b; --crit-text:#e66767;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%; overflow:hidden}
+  body{
+    background:var(--page); color:var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* Single-viewport layout: everything fixed-height except the chart, which
+     absorbs the remainder. Panels overlay rather than push. */
+  #app{max-width:1180px; margin:0 auto; padding:10px 14px 12px; display:flex;
+       flex-direction:column; gap:9px; height:100dvh}
+  header{display:flex; align-items:center; gap:8px; flex:none; flex-wrap:wrap}
+  .brand{font-weight:700; letter-spacing:.14em; font-size:14px; color:var(--ink2)}
+  .spacer{flex:1}
+  .pill{font-size:12px; color:var(--ink2); background:var(--surface); border:1px solid var(--ring); border-radius:999px; padding:5px 11px; display:flex; align-items:center; gap:6px; white-space:nowrap}
+  .pill .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+  .pill.on .dot{background:var(--rec)}
+  .pill.mid .dot{background:var(--warn)}
+  button{
+    font:inherit; font-size:14px; color:var(--ink); background:var(--surface2);
+    border:1px solid var(--ring); border-radius:9px; padding:9px 16px; cursor:pointer;
+  }
+  button:hover{background:#2c2c2b}
+  button:disabled{opacity:.4; cursor:default}
+  button.primary{background:var(--spo2); border-color:transparent; font-weight:600}
+  button.primary:hover{background:#4b93ea}
+  button.ghost{background:transparent}
+  button.dangerish{color:var(--crit-text)}
+  .card{background:var(--surface); border:1px solid var(--ring); border-radius:13px; padding:12px 14px}
+  .grid{display:grid; grid-template-columns:1.05fr 1fr; gap:9px; flex:none}
+  @media (max-width:760px){ .grid{grid-template-columns:1fr} }
+
+  /* Overlay panels — settings / history / BLE console */
+  .panel{position:fixed; z-index:30; right:16px; top:54px;
+    width:min(720px, calc(100vw - 32px)); max-height:calc(100dvh - 110px);
+    overflow:auto; box-shadow:0 20px 56px rgba(0,0,0,.65)}
+  .panel .pclose{position:absolute; top:8px; right:10px; font-size:16px; line-height:1;
+    padding:3px 8px; background:transparent; border:none; color:var(--muted)}
+  .panel .pclose:hover{color:var(--ink); background:var(--surface2)}
+
+  .vlabel,.plabel{font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); display:flex; gap:8px; align-items:center}
+  .huge{font-variant-numeric:tabular-nums; font-weight:650; line-height:1.02; letter-spacing:-.02em}
+  #spo2{font-size:clamp(48px, 11vh, 104px)}
+  #phaseTimer{font-size:clamp(40px, 9vh, 84px)}
+  #spo2 .unit{font-size:.32em; font-weight:500; color:var(--muted)}
+  .subrow{font-size:15px; color:var(--ink2); margin-top:4px; font-variant-numeric:tabular-nums}
+  .subrow b{color:var(--ink); font-weight:650; font-size:20px}
+  .hint{font-size:13px; color:var(--muted); margin-top:10px}
+  .statrow{display:flex; gap:22px; margin-top:8px; flex-wrap:wrap}
+  .stat .sl{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+  .stat .sv{font-variant-numeric:tabular-nums; color:var(--ink2); margin-top:1px}
+  .stat .sv b{font-size:22px; font-weight:650; color:var(--ink)}
+  .stat .sv i{font-style:normal; font-size:12px; color:var(--muted); margin-left:3px}
+  .stale #spo2, .stale #pai{color:var(--muted) !important}
+  .hrstale #hr, .hrstale #rmssd{color:var(--muted) !important}
+  .zone{font-size:11px; border-radius:6px; padding:2px 7px; letter-spacing:.06em}
+  .z-norm{background:rgba(12,163,12,.16); color:#4ec24e}
+  .z-mild{background:rgba(250,178,25,.14); color:var(--warn)}
+  .z-deep{background:rgba(236,131,90,.16); color:var(--serious)}
+  .z-alarm{background:rgba(208,59,59,.22); color:var(--crit-text)}
+
+  #phaseCard{position:relative; overflow:hidden}
+  #phaseCard.ph-H{box-shadow:inset 0 0 0 1px rgba(57,135,229,.45); background:linear-gradient(rgba(57,135,229,.07),rgba(57,135,229,.07)) var(--surface)}
+  #phaseCard.ph-R{box-shadow:inset 0 0 0 1px rgba(12,163,12,.45); background:linear-gradient(rgba(12,163,12,.06),rgba(12,163,12,.06)) var(--surface)}
+  #phaseCard.ph-H .plabel{color:#7db4f0}
+  #phaseCard.ph-R .plabel{color:#4ec24e}
+  /* the target is being held — the switch is pending, not fired */
+  #phaseCard.holding{box-shadow:inset 0 0 0 1px rgba(250,178,25,.6)}
+  #phaseCard.holding .plabel{color:var(--warn)}
+  .bar{height:6px; background:var(--surface2); border-radius:3px; margin-top:14px; overflow:hidden}
+  #barFill{height:100%; width:0%; background:var(--muted); border-radius:3px; transition:width .25s linear}
+  .ph-H #barFill{background:var(--hyp)} .ph-R #barFill{background:var(--rec)}
+
+  .chartcard{padding:9px 12px 4px; flex:1 1 auto; min-height:130px; display:flex; flex-direction:column}
+  .chartwrap{position:relative; flex:1 1 auto; min-height:0}
+  #chart{position:absolute; inset:0; width:100%; height:100%; display:block; cursor:crosshair}
+  #tip{position:absolute; pointer-events:none; background:#232322; border:1px solid var(--ring); border-radius:8px; padding:6px 9px; font-size:12px; color:var(--ink2); font-variant-numeric:tabular-nums; box-shadow:0 4px 14px rgba(0,0,0,.5); z-index:5}
+  #tip b{color:var(--ink)}
+  .chips{display:flex; gap:6px; flex-wrap:wrap; padding:6px 2px 3px; flex:none;
+    max-height:54px; overflow-y:auto}
+  .chip{font-size:12px; color:var(--ink2); background:var(--surface2); border:1px solid var(--ring); border-radius:7px; padding:3px 9px; font-variant-numeric:tabular-nums}
+  .chip b{color:var(--ink); font-weight:600}
+  .chip i{font-style:normal; font-weight:400; color:var(--muted)}
+
+  footer{display:flex; gap:8px; align-items:center; flex:none; flex-wrap:wrap}
+  /* The layout is a single viewport with no scroll, so a footer row that wraps off
+     the bottom is a control you cannot reach. Tighten the buttons on narrow screens
+     rather than let the session controls fall off the edge. */
+  @media (max-width:620px){
+    #app{gap:6px; padding-bottom:8px}
+    .card{padding:10px 12px}
+    footer{gap:6px}
+    footer button{padding:8px 10px; font-size:13px}
+    /* The chart is the flex item that absorbs whatever is left over, but its
+       min-height stops it giving any back — on a phone that pushed the footer off
+       the bottom of a layout that cannot scroll. Let it go smaller there. */
+    .chartcard{min-height:78px}
+  }
+  #summary{margin-top:9px; font-size:13.5px; color:var(--ink2); line-height:1.55;
+    max-height:22vh; overflow-y:auto}
+  #summary b{color:var(--ink); font-variant-numeric:tabular-nums}
+
+  #settings{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px}
+  #settings label{display:flex; flex-direction:column; gap:5px; font-size:12px; color:var(--muted)}
+  #settings select{
+    font:inherit; font-size:15px; color:var(--ink); background:var(--surface2);
+    border:1px solid var(--ring); border-radius:8px; padding:7px 9px; width:100%;
+  }
+  #settings input[type=number]{
+    font:inherit; font-size:15px; color:var(--ink); background:var(--surface2);
+    border:1px solid var(--ring); border-radius:8px; padding:7px 9px; width:100%;
+    font-variant-numeric:tabular-nums;
+  }
+  #settings .tgl{flex-direction:row; align-items:center; gap:8px; font-size:13px; color:var(--ink2); align-self:end; padding:6px 0}
+  #settings input[type=checkbox]{width:16px;height:16px;accent-color:var(--spo2)}
+
+  .quickwrap{padding:7px 9px 6px; flex:none}
+  .quickbar{display:flex; gap:7px; flex-wrap:wrap; align-items:stretch}
+  .dosenote{font-size:11.5px; color:var(--muted); margin-top:6px; line-height:1.45}
+  .dosenote b{color:var(--ink2); font-weight:600}
+  .dosenote .warn{color:var(--warn)}
+  .dosenote .ok{color:#4ec24e}
+  .qitem{display:flex; flex-direction:column; gap:2px; background:var(--surface2);
+    border:1px solid var(--ring); border-radius:9px; padding:4px 8px; min-width:104px; flex:1 1 104px}
+  .qitem .ql{font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+  .qrow{display:flex; align-items:center; gap:4px}
+  .qrow button{font-size:14px; line-height:1; padding:2px 7px; border-radius:6px; background:transparent}
+  .qrow button:hover{background:#333331}
+  .qrow b{flex:1; text-align:center; font-size:17px; font-weight:650; font-variant-numeric:tabular-nums}
+  .qrow b i{font-style:normal; font-size:11px; color:var(--muted); margin-left:1px}
+
+  .histctl{display:flex; gap:6px; align-items:center}
+  .histctl select, .histctl button{font-size:12px; padding:4px 9px; border-radius:7px;
+    background:var(--surface2); color:var(--ink2); border:1px solid var(--ring); font-family:inherit}
+  #trends{display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:10px; margin:10px 0 4px}
+  .trend{background:var(--surface2); border:1px solid var(--ring); border-radius:10px; padding:8px 10px}
+  .trend .tl{font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+  .trend .tv{font-size:13px; color:var(--ink2); font-variant-numeric:tabular-nums; margin-top:2px}
+  .trend .tv b{color:var(--ink); font-size:15px; font-weight:650}
+  .trend svg{display:block; margin-top:4px}
+  .nospark{font-size:11px; color:var(--muted); padding:12px 0 6px}
+  .delrow{cursor:pointer; color:var(--muted); font-size:14px}
+  .delrow:hover{color:var(--crit-text)}
+  #hist{overflow-x:auto}
+  .htab{width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; margin-top:8px}
+  .htab th{text-align:left; font-weight:500; font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted); padding:5px 12px 5px 0; border-bottom:1px solid var(--baseline); white-space:nowrap}
+  .htab td{padding:6px 12px 6px 0; color:var(--ink2); border-bottom:1px solid var(--grid); white-space:nowrap}
+  .htab tbody tr:hover td{color:var(--ink)}
+
+  #dbgLog{height:150px; overflow-y:auto; background:#111110; border:1px solid var(--ring); border-radius:8px;
+    padding:8px; font:11px ui-monospace,Menlo,monospace; color:var(--ink2); white-space:pre-wrap; margin-top:8px}
+  .txrow{display:flex; gap:8px; margin-top:8px}
+  .txrow input{flex:1; font:12px ui-monospace,Menlo,monospace; color:var(--ink); background:var(--surface2);
+    border:1px solid var(--ring); border-radius:8px; padding:7px 9px}
+
+  #livecheck{position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:40;
+    background:var(--surface2); border:1px solid var(--warn); border-radius:13px;
+    padding:11px 16px; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,.6);
+    animation:pulse 1.1s ease-in-out infinite}
+  @keyframes pulse{50%{border-color:var(--crit-text)}}
+  #livecheck .lct{font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--warn); margin-bottom:7px}
+  #livecheck button{background:var(--warn); color:#1a1a19; font-weight:650; border:none}
+
+  #alarm{position:fixed; inset:0; background:rgba(208,59,59,.93); z-index:50;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+    animation:flash 1s steps(2,jump-none) infinite}
+  @keyframes flash{50%{background:rgba(160,30,30,.93)}}
+  #alarm .atext{font-size:clamp(40px,8vw,84px); font-weight:800; letter-spacing:.04em}
+  #alarm .aspo2{font-size:clamp(60px,12vw,140px); font-weight:700; font-variant-numeric:tabular-nums}
+  #alarm button{background:rgba(0,0,0,.3); border-color:rgba(255,255,255,.4); margin-top:16px}
+  [hidden]{display:none !important}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">IHT</div>
+    <div id="btPill" class="pill"><span class="dot"></span><span id="btText">not connected</span></div>
+    <div id="hrPill" class="pill"><span class="dot"></span><span id="hrText">no strap</span></div>
+    <div id="battPill" class="pill" hidden>🔋 <span id="battText"></span></div>
+    <div class="spacer"></div>
+    <button id="btnConnect">Connect SpO₂</button>
+    <button id="btnConnectHr">Connect HR</button>
+    <button id="btnScanAll" class="ghost" title="chooser without name filters — lists every advertising BLE device">scan all</button>
+    <button id="btnSettings" class="ghost" title="settings">⚙︎</button>
+  </header>
+
+  <div id="settings" class="card panel" hidden>
+    <button class="pclose" data-close="settings" title="close">✕</button>
+    <label style="grid-column:1/-1">protocol
+      <select id="s_preset"></select>
+      <span id="presetNote" class="hint" style="margin-top:2px"></span>
+    </label>
+    <label>cycles<input type="number" id="s_cycles" min="1" max="15" step="1"></label>
+    <label>hypoxic (min)<input type="number" id="s_hyp" min="0.5" max="15" step="0.5"></label>
+    <label>recovery (min)<input type="number" id="s_rec" min="0.5" max="15" step="0.5"></label>
+    <label>SpO₂ target (switch ≤)<input type="number" id="s_low" min="80" max="97" step="1"></label>
+    <label>recovered (≥)<input type="number" id="s_recd" min="85" max="100" step="1"></label>
+    <label>alarm floor<input type="number" id="s_floor" min="75" max="90" step="1"></label>
+    <label title="the reading has to stay at or past the target this long before the phase switches — a one-off dip no longer ends a phase">hold at target (s)<input type="number" id="s_hold" min="0" max="60" step="1"></label>
+    <label title="a reading this far past the target switches straight away, without waiting out the hold">switch now if past by (pts)<input type="number" id="s_margin" min="1" max="10" step="1"></label>
+    <label title="cue fires, then the phase clock starts after this — time to get the mask on or off">changeover lead (s)<input type="number" id="s_lead" min="0" max="30" step="1"></label>
+    <label class="tgl"><input type="checkbox" id="s_autoLow">auto-switch at target</label>
+    <label class="tgl"><input type="checkbox" id="s_autoRec">end recovery when recovered</label>
+    <label class="tgl"><input type="checkbox" id="s_beeps">beeps</label>
+    <label class="tgl"><input type="checkbox" id="s_voice">voice</label>
+    <label class="tgl"><input type="checkbox" id="s_sim">simulate SpO₂ (no device)</label>
+    <label class="tgl" title="prompts every 90 s during hypoxic phases and aborts to recovery if unanswered — stands in for an observer noticing you fall asleep"><input type="checkbox" id="s_liveCheck">liveness check</label>
+  </div>
+
+  <div class="card quickwrap">
+    <div id="quick" class="quickbar"></div>
+    <div id="doseNote" class="dosenote"></div>
+  </div>
+
+  <main class="grid">
+    <section class="card" id="vitalsCard">
+      <div class="vlabel">SpO₂ <span id="zoneTag" class="zone" hidden></span></div>
+      <div id="spo2" class="huge">--<span class="unit">%</span></div>
+      <div class="statrow">
+        <div class="stat"><div class="sl">pulse</div><div class="sv"><b id="hr">--</b><i>bpm</i></div></div>
+        <div class="stat"><div class="sl" id="rmssdLab">RMSSD</div><div class="sv"><b id="rmssd">--</b><i>ms</i></div></div>
+        <div class="stat"><div class="sl">perfusion</div><div class="sv"><b id="pai">--</b></div></div>
+      </div>
+      <div class="statrow">
+        <div class="stat"><div class="sl">SDNN</div><div class="sv"><b id="sdnn">--</b><i>ms</i></div></div>
+        <div class="stat"><div class="sl">pNN50</div><div class="sv"><b id="pnn50">--</b><i>%</i></div></div>
+        <div class="stat"><div class="sl" id="chemoLab">chemoreflex</div><div class="sv"><b id="chemo">--</b><i>bpm/%</i></div></div>
+        <div class="stat"><div class="sl" id="oxRmssdLab">PRV finger</div><div class="sv"><b id="oxRmssd">--</b><i>ms</i></div></div>
+      </div>
+      <div id="targetHint" class="hint">connect the oximeter, or enable simulate in settings</div>
+    </section>
+    <section class="card" id="phaseCard">
+      <div id="phaseName" class="plabel">READY</div>
+      <div id="phaseTimer" class="huge">–:––</div>
+      <div class="subrow"><span id="cycleLab">cycle –/–</span> &nbsp;·&nbsp; session <span id="sessLab">00:00</span></div>
+      <div class="bar"><div id="barFill"></div></div>
+      <div id="summary" hidden></div>
+    </section>
+  </main>
+
+  <section class="card chartcard">
+    <div class="chartwrap"><canvas id="chart"></canvas><div id="tip" hidden></div></div>
+    <div id="chips" class="chips"></div>
+  </section>
+
+  <section class="card panel" id="hist" hidden>
+    <button class="pclose" data-close="hist" title="close">✕</button>
+    <div class="vlabel" style="justify-content:space-between; padding-right:26px">
+      <span>session history &amp; adaptation</span>
+      <span class="histctl">
+        <select id="histFilter">
+          <option value="match">same dose only</option>
+          <option value="all">all sessions</option>
+        </select>
+        <button id="btnHistCsv">export</button>
+        <button id="btnHistClear" class="dangerish">clear</button>
+      </span>
+    </div>
+    <div id="trends"></div>
+    <div id="histBody"></div>
+  </section>
+
+  <section class="card panel" id="dbg" hidden>
+    <button class="pclose" data-close="dbg" title="close">✕</button>
+    <div class="vlabel" style="justify-content:space-between; padding-right:26px">BLE console
+      <button id="btnSync" style="font-size:12px;padding:4px 10px">sync stored readings</button>
+    </div>
+    <pre id="dbgLog"></pre>
+    <div class="txrow">
+      <input id="dbgHex" placeholder="hex bytes to send — e.g. 99 00 19">
+      <button id="btnTx" style="font-size:12px;padding:4px 12px">send</button>
+    </div>
+  </section>
+
+  <footer>
+    <button id="btnStart" class="primary">Start session</button>
+    <button id="btnPause" disabled>Pause</button>
+    <button id="btnUndo" disabled title="take back the last switch and go back to the phase you were in (u)">↶ Undo switch</button>
+    <button id="btnSkip" disabled title="force the switch now, whatever the SpO₂ is doing (n)">Next phase ▸</button>
+    <button id="btnEnd" class="dangerish" disabled>End</button>
+    <div class="spacer"></div>
+    <button id="btnHist" class="ghost">History</button>
+    <button id="btnCsv" class="ghost" disabled>Export CSV</button>
+    <button id="btnRaw" class="ghost" title="beat intervals + per-second trace of the most recent session, as JSON — everything needed to recompute any metric">Export raw</button>
+  </footer>
+</div>
+
+<div id="livecheck" hidden>
+  <div class="lct">still with us?</div>
+  <button id="btnLive">I'm OK — tap, or press any key</button>
+</div>
+
+<div id="alarm" hidden>
+  <div class="atext">REMOVE MASK</div>
+  <div class="aspo2" id="alarmSpo2">--%</div>
+  <button id="btnSilence">silence 60 s</button>
+</div>
+
+<script>
+'use strict';
+/* ============================== settings ============================== */
+const DEFAULTS = {cycles:5, hyp:5, rec:3, low:85, recd:95, floor:80, lead:3, hold:5, margin:2,
+                  autoLow:true, autoRec:false, beeps:true, voice:true, sim:false,
+                  liveCheck:false};
+let S = {...DEFAULTS};
+try { S = {...DEFAULTS, ...JSON.parse(localStorage.getItem('ihht.settings.v1')||'{}')}; } catch(e){}
+const FIELDS = ['cycles','hyp','rec','low','recd','floor','lead','hold','margin','autoLow','autoRec','beeps','voice','sim','liveCheck'];
+const $ = id => document.getElementById(id);
+
+/* ============================== protocols ==============================
+   Preset parameters are filled in from the literature review; see PROTOCOLS.md
+   in this folder for the citation behind each one. */
+const PRESETS = [
+  {id:'custom', name:'Custom / current', note:'Your own parameters — nothing is overwritten.'},
+  {id:'gentle', name:'Gentle start — 3×5 min @ 92%', cycles:3, hyp:5, rec:3, low:92, recd:96, floor:85, autoLow:true,
+   note:'Conservative unsupervised entry. Milder than the 82–88% band the trials use, so expect little adaptation — but it is the right place to learn your own response first.'},
+  {id:'found1', name:'Foundation wk 1 — 3×3 min @ 93%', cycles:3, hyp:3, rec:3, low:93, recd:96, floor:85, autoLow:true,
+   note:'Faulhaber 2015 week 1 (15% O₂, ΔSpO₂ −3.7%). The only progression scheme with published safety data — no BP creep across the ramp.'},
+  {id:'found2', name:'Foundation wk 2 — 4×4 min @ 89%', cycles:4, hyp:4, rec:3, low:89, recd:95, floor:83, autoLow:true,
+   note:'Faulhaber 2015 week 2 (13% O₂, ΔSpO₂ −7.8%). Volume and depth both step up.'},
+  {id:'found3', name:'Foundation wk 3 — 5×5 min @ 87%', cycles:5, hyp:5, rec:3, low:87, recd:95, floor:80, autoLow:true,
+   note:'Faulhaber 2015 week 3 (12% O₂, ΔSpO₂ −10.0%). This is the ceiling of the scheme — do not keep deepening past it.'},
+  {id:'adaptive', name:'Adaptive (ReOxy-style) — 5×≤5 min @ 85%', cycles:5, hyp:5, rec:3, low:85, recd:95, floor:80, autoLow:true,
+   note:'Bayer 2017 / Behrendt 2022 family: hypoxia until your floor, recovery until resaturated. 3×/wk, ~18 sessions, re-test your tolerance at week 3.'},
+  {id:'clinical', name:'Clinical band — 6×5 min @ 88%', cycles:6, hyp:5, rec:3, low:88, recd:95, floor:82, autoLow:true,
+   note:'Ladriñán-Maestro 2026 85–92% band. Mid-range dose; the outcome evidence clusters at a nadir of 82–88%.'},
+];
+function applyPreset(id){
+  const p = PRESETS.find(x=>x.id===id);
+  $('presetNote').textContent = p?.note || '';
+  if (!p || p.id==='custom') return;
+  for (const k of ['cycles','hyp','rec','low','recd','floor']) if (p[k]!=null) S[k]=p[k];
+  if (p.autoLow!=null) S.autoLow=p.autoLow;
+  localStorage.setItem('ihht.settings.v1', JSON.stringify(S));
+  settingsToUI();
+  render();
+}
+function buildPresetUI(){
+  $('s_preset').innerHTML = PRESETS.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  $('s_preset').value = S.preset || 'custom';
+  $('presetNote').textContent = PRESETS.find(x=>x.id===($('s_preset').value))?.note || '';
+  $('s_preset').addEventListener('change', e=>{
+    S.preset = e.target.value;
+    applyPreset(e.target.value);
+    localStorage.setItem('ihht.settings.v1', JSON.stringify(S));
+  });
+}
+
+function settingsToUI(){
+  for (const f of FIELDS){
+    const el = $('s_'+f);
+    if (el.type==='checkbox') el.checked = !!S[f]; else el.value = S[f];
+  }
+}
+function uiToSettings(){
+  for (const f of FIELDS){
+    const el = $('s_'+f);
+    if (el.type==='checkbox'){ S[f]=el.checked; continue; }
+    const v = parseFloat(el.value);          // 0 is a real value here (lead, hold)
+    S[f] = isFinite(v) ? v : DEFAULTS[f];
+  }
+  localStorage.setItem('ihht.settings.v1', JSON.stringify(S));
+  syncSim(); syncQuick(); render();
+}
+/* ============================== quick bar ==============================
+   The four dials worth changing between sessions, always visible. */
+const QUICK = [
+  {k:'cycles', label:'cycles',      step:1,   min:1,  max:15, unit:''},   // 15 episodes/day is the published ceiling
+  {k:'low',    label:'target SpO₂', step:1,   min:80, max:97, unit:'%'},   // 80% is the published consumer floor
+  {k:'hyp',    label:'hypoxic',     step:0.5, min:0.5,max:15, unit:'min'},
+  {k:'rec',    label:'recovery',    step:0.5, min:0.5,max:15, unit:'min'},
+  {k:'floor',  label:'alarm floor', step:1,   min:60, max:90, unit:'%'},
+];
+function buildQuick(){
+  $('quick').innerHTML = QUICK.map(q=>
+    `<div class="qitem"><span class="ql">${q.label}</span><div class="qrow">`+
+    `<button data-k="${q.k}" data-d="-1">−</button>`+
+    `<b id="q_${q.k}">–<i>${q.unit}</i></b>`+
+    `<button data-k="${q.k}" data-d="1">+</button></div></div>`).join('');
+  $('quick').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+    const q = QUICK.find(x=>x.k===b.dataset.k);
+    const v = Math.min(q.max, Math.max(q.min, +(S[q.k] + q.step*(+b.dataset.d)).toFixed(1)));
+    S[q.k]=v;
+    if (S.low <= S.floor) S.floor = Math.max(60, S.low-3);   // target must stay above the floor
+    if (S.recd <= S.low)  S.recd  = Math.min(100, S.low+3);
+    S.preset='custom';
+    localStorage.setItem('ihht.settings.v1', JSON.stringify(S));
+    settingsToUI(); syncQuick(); render();
+  }));
+  syncQuick();
+}
+function syncQuick(){
+  for (const q of QUICK){
+    const el=$('q_'+q.k); if(!el) continue;
+    el.innerHTML = S[q.k] + (q.unit?`<i>${q.unit}</i>`:'');
+  }
+  if ($('s_preset')) $('s_preset').value = S.preset || 'custom';
+  renderDoseNote();
+}
+// Where the current settings sit relative to the doses trials actually used.
+// Outcome evidence clusters at a nadir of 82–88%; above ~90% is below every
+// documented threshold, and deeper is not better (inverted-U, with endothelial
+// harm measured at 12% O₂ where 15% was beneficial).
+function renderDoseNote(){
+  const el = $('doseNote'); if (!el) return;
+  const cum = S.cycles * S.hyp;
+  let target, cls;
+  if (S.low >= 91){ target='above the 82–88% band the trials use — minimal expected stimulus'; cls='warn'; }
+  else if (S.low >= 89){ target='at the mild edge of the published range'; cls=''; }
+  else if (S.low >= 82){ target='inside the band where trial outcomes cluster'; cls='ok'; }
+  else { target='at the deep end of published protocols — deeper is not better'; cls='warn'; }
+
+  let vol='';
+  if (cum > 30) vol = ` · <span class="warn">${cum} min cumulative hypoxia is above the 15–30 min trials use</span>`;
+  else if (cum < 10) vol = ` · ${cum} min cumulative — trials run 15–30 min`;
+  else vol = ` · ${cum} min cumulative hypoxia`;
+
+  const cyc = S.cycles > 8 ? ` · <span class="warn">${S.cycles} cycles exceeds the typical 4–8</span>` : '';
+  el.innerHTML = `dose: target <b>${S.low}%</b> — <span class="${cls}">${target}</span>${vol}${cyc}`;
+}
+
+settingsToUI();
+buildPresetUI();
+buildQuick();
+document.querySelectorAll('#settings input').forEach(el=>el.addEventListener('change', uiToSettings));
+// Panels overlay rather than occupy layout space, and only one is open at a time.
+const PANELS = ['settings','hist','dbg'];
+function togglePanel(id){
+  const open = $(id).hidden;
+  PANELS.forEach(p=>{ const e=$(p); if(e) e.hidden=true; });
+  if (open){ $(id).hidden=false; if (id==='hist') renderHistory(); }
+}
+document.querySelectorAll('.pclose').forEach(b=>b.addEventListener('click',()=>{ $(b.dataset.close).hidden=true; }));
+$('btnSettings').onclick = ()=> togglePanel('settings');
+
+/* ============================== state ============================== */
+const st = {
+  running:false, paused:false, done:false,
+  phase:null, cycle:0,                 // 'H' | 'R'
+  phaseStart:0, phaseDur:0, phasePaused:0, pauseAt:0,
+  sessionStart:0, sessPaused:0,
+  warned10:false,
+  holdSince:0, holdLast:0, disarmed:false, undo:[],   // auto-switch hold + undo stack
+  spo2:null, hr:null, pai:null, lastSample:0,
+  cycleMinCur:null, cycles:[],         // [{n, hyp:{...}, rec:{...}}]
+  samples:[],                          // {t, s, ph, cy, sp, hr, pai}
+  phaseLog:[],                         // {s0, ph}
+  alarm:false, alarmSilencedUntil:0, signalLost:false,
+  liveWait:false, abortNote:null, simUsed:false, doneAt:null,
+  hoverSec:null,
+};
+
+const fmt = s => { s=Math.max(0,Math.round(s)); return Math.floor(s/60)+':' + String(s%60).padStart(2,'0'); };
+const now = () => Date.now();
+// Freezes once the session ends — otherwise the DONE screen keeps counting up and
+// disagrees with the duration recorded in the summary.
+const sessionSec = () => !st.sessionStart ? 0
+  : st.doneAt ? (st.doneAt - st.sessionStart - st.sessPaused)/1000
+  : (now()-st.sessionStart-st.sessPaused-(st.paused?now()-st.pauseAt:0))/1000;
+const phaseSec   = () => st.phaseStart ? (now()-st.phaseStart-st.phasePaused-(st.paused?now()-st.pauseAt:0))/1000 : 0;
+
+/* ============================== audio ============================== */
+let AC = null;
+function ac(){ if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); return AC; }
+function beep(freq, dur=0.14, when=0, vol=0.25){
+  if(!S.beeps) return;
+  try{
+    const c = ac(), t = c.currentTime + when;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type='sine'; o.frequency.value=freq;
+    g.gain.setValueAtTime(0,t);
+    g.gain.linearRampToValueAtTime(vol, t+0.012);
+    g.gain.setValueAtTime(vol, t+dur-0.03);
+    g.gain.linearRampToValueAtTime(0, t+dur);
+    o.connect(g); g.connect(c.destination); o.start(t); o.stop(t+dur+0.02);
+  }catch(e){}
+}
+const cueHyp  = ()=>{ beep(520,.16,0); beep(392,.22,.19); };
+const cueRec  = ()=>{ beep(587,.16,0); beep(784,.22,.19); };
+const cueDone = ()=>{ beep(523,.15,0); beep(659,.15,.17); beep(784,.3,.34); };
+const cueTick = ()=>  beep(700,.07,0,.15);
+/* Voice cues are pre-rendered clips in audio/ rather than synthesised
+   at runtime: playback is instant, identical every time, and needs no network mid
+   session. speechSynthesis remains the fallback if a clip is missing. */
+const VOICE_KEYS = ['recovery','target-recovery','complete','remove-mask','mask-off-now',
+  'desat-fast','signal-lost','signal-lost-check','no-response','hr-high','cumulative','ending'];
+for (let i=1;i<=15;i++) VOICE_KEYS.push('cycle-'+i);
+const CLIPS = {};
+for (const k of VOICE_KEYS){ const a=new Audio('audio/'+k+'.mp3'); a.preload='auto'; CLIPS[k]=a; }
+let curClip = null;
+
+function sayFallback(txt){
+  if(!txt || !('speechSynthesis' in window)) return;
+  try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(txt); u.rate=1.02; speechSynthesis.speak(u); }catch(e){}
+}
+function speak(key, fallback){
+  if (!S.voice) return;
+  const a = CLIPS[key];
+  if (!a) return sayFallback(fallback);
+  try{
+    if (curClip && curClip!==a){ curClip.pause(); try{curClip.currentTime=0;}catch(e){} }
+    a.currentTime = 0;
+    curClip = a;
+    const p = a.play();
+    if (p && p.catch) p.catch(()=>sayFallback(fallback));
+  }catch(e){ sayFallback(fallback); }
+}
+
+/* ============================== engine ============================== */
+/* The pre-flight checks used to be confirm() dialogs. A modal that returns false is
+   indistinguishable from a modal that was never shown, and Chrome suppresses repeat
+   dialogs from a page ("prevent this page from creating additional dialogs") — after
+   which every check silently returned false and Start did nothing at all, with no
+   error and no way to tell why. Nothing that gates starting a session may be able to
+   fail invisibly. The warnings are now shown in the page and the button arms itself:
+   the first press explains, the second press starts. */
+function startWarnings(){
+  const w = [];
+  const h = loadHistory(), last = h.at(-1);
+  if (last){
+    const hrsAgo = (Date.now()-new Date(last.at))/3600000;
+    if (hrsAgo < 24) w.push(`last session was ${hrsAgo.toFixed(1)} h ago — protocols require 24 h between sessions`);
+    const wk = h.filter(r=>Date.now()-new Date(r.at) < 7*864e5).length;
+    if (wk >= 3) w.push(`that would be ${wk+1} sessions in 7 days — protocols run 2–3 per week`);
+  }
+  // Never run a hypoxic phase blind — an unmonitored session has no safety net at all.
+  if (!S.sim && Date.now()-st.lastSample > 10000)
+    w.push('no live SpO₂ reading — desaturation cannot be detected and every safety rule is inactive');
+  return w;
+}
+function startSession(){
+  const w = startWarnings();
+  if (w.length && !st.startArmed){
+    st.startArmed = true;                 // shown on screen by render(); next press goes
+    render();
+    return;
+  }
+  st.startArmed = false;
+  ac();
+  st.abortNote=null; st.liveWait=false; st.simUsed=false; st.doneAt=null;
+  liveDue = Date.now()+90000;
+  st.running=true; st.paused=false; st.done=false;
+  st.cycle=1; st.sessionStart=now(); st.sessPaused=0;
+  st.samples=[]; st.phaseLog=[]; st.cycles=[]; st.hoverSec=null; st.undo=[];
+  $('summary').hidden=true; $('chips').innerHTML='';
+  enterPhase('H', false);
+  requestWakeLock();
+  render();
+}
+function enterPhase(ph, announce=true){
+  // Lead-in: the cue fires now, but the phase clock starts a few seconds later so
+  // you have time to actually get the mask on or off. Kinetics and the phase band
+  // are logged from the real start, so the changeover never pollutes them.
+  const lead = Math.max(0, S.lead||0);
+  st.phase=ph; st.phaseStart=now()+lead*1000; st.phasePaused=0; st.warned10=false;
+  st.leadBeep=0; st.holdSince=0; st.holdLast=0; st.disarmed=false;
+  st.phaseDur = (ph==='H'? S.hyp : S.rec)*60;
+  if (ph==='H') st.cycleMinCur=null;
+  st.phaseLog.push({s0:sessionSec()+lead, ph});
+  if (announce){
+    if (ph==='H'){ cueHyp(); speak('cycle-'+st.cycle, `Cycle ${st.cycle}. Hypoxia — mask on.`); }
+    else { cueRec(); speak('recovery', 'Recovery — mask off.'); }
+  } else if (ph==='H'){ cueHyp(); speak('cycle-1', 'Cycle 1. Hypoxia — mask on.'); }
+}
+// Per-cycle kinetics. Desaturation slope and resaturation half-time are the
+// numbers that shift as you adapt — nadir alone mostly reflects the dose you chose.
+function cycRec(n){
+  let r = st.cycles.find(c=>c.n===n);
+  if (!r){ r={n}; st.cycles.push(r); }
+  return r;
+}
+function closePhase(){
+  const e = st.phaseLog.at(-1);
+  if (!e) return;
+  const seg = st.samples.filter(x=>x.s>=e.s0 && x.sp!=null);
+  if (seg.length<4) return;
+  const t0=seg[0].s, sp0=seg[0].sp, r=cycRec(st.cycle);
+  if (e.ph==='H'){
+    let nadir=sp0, tN=0;
+    for (const x of seg) if (x.sp<=nadir){ nadir=x.sp; tN=x.s-t0; }
+    const hit = seg.find(x=>x.sp<=S.low);
+    r.hyp = {start:sp0, nadir, dur:seg.at(-1).s-t0, tNadir:tN,
+             desat: tN>=15 ? (sp0-nadir)/(tN/60) : null,
+             tToTarget: hit ? Math.round(hit.s-t0) : null};
+  } else {
+    let peak=sp0;
+    for (const x of seg) if (x.sp>peak) peak=x.sp;
+    const half = sp0 + (peak-sp0)/2;
+    const hh = seg.find(x=>x.sp>=half);
+    const goalHit = seg.find(x=>x.sp>=S.recd);
+    // Primary recovery metric is the early slope, not t½. SpO₂ climbs as a staircase
+    // of 1% steps with irregular plateaus, so t½ depends on which step the half-deficit
+    // level happens to land on — a 17 s plateau sitting on that threshold adds 17 s of
+    // pure noise. Measured on a real session, t½ "doubled" (22→45 s) while the 60 s
+    // slope was identical (8.1 pts/min). Averaging over many steps removes that.
+    const w60 = seg.filter(x=>x.s-t0<=60);
+    const r60 = w60.length>3 && (w60.at(-1).s-t0)>=20
+      ? (w60.at(-1).sp - sp0)/((w60.at(-1).s-t0)/60) : null;
+    const g95 = seg.find(x=>x.sp>=95);
+    r.rec = {start:sp0, peak, dur:seg.at(-1).s-t0,
+             r60: r60!=null ? +r60.toFixed(1) : null,      // pts/min over first 60 s
+             tTo95: g95 ? Math.round(g95.s-t0) : null,
+             thalf: hh ? +(hh.s-t0).toFixed(1) : null,     // kept, but noisy — don't trend it
+             tToGoal: goalHit ? Math.round(goalHit.s-t0) : null,
+             resat: hh && (hh.s-t0)>=3 ? ((peak-sp0)/2)/((hh.s-t0)/60) : null};
+  }
+  renderChips();
+}
+function renderChips(){
+  $('chips').innerHTML = st.cycles.map(c=>{
+    const bits=[];
+    if (c.hyp) bits.push(`↓${c.hyp.nadir}%` + (c.hyp.desat!=null?` <i>${c.hyp.desat.toFixed(1)}%/min</i>`:''));
+    if (c.rec) bits.push(`↑${c.rec.peak}%` + (c.rec.r60!=null?` <i>${c.rec.r60}/min</i>`:''));
+    return `<span class="chip">C${c.n} <b>${bits.join('</b> · <b>')}</b></span>`;
+  }).join('');
+}
+/* Undo. Every phase change first records the state it is leaving, so a switch you
+   did not want — an auto-switch on a bad reading, a mistimed Next — can be taken
+   back. The snapshot has to cover everything closePhase() and enterPhase() touch:
+   the clock, the cycle counter, the phase log, and the per-cycle kinetics record. */
+function snapshot(){
+  return {at:now(), phase:st.phase, cycle:st.cycle,
+    phaseStart:st.phaseStart, phaseDur:st.phaseDur, phasePaused:st.phasePaused,
+    warned10:st.warned10, leadBeep:st.leadBeep, cycleMinCur:st.cycleMinCur,
+    phaseLogLen:st.phaseLog.length, cycles:JSON.parse(JSON.stringify(st.cycles))};
+}
+function undoSwitch(){
+  if (!st.running || !st.undo.length) return;
+  const s = st.undo.pop();
+  st.phaseLog.length = s.phaseLogLen;
+  st.cycles = s.cycles;
+  st.phase=s.phase; st.cycle=s.cycle; st.phaseDur=s.phaseDur;
+  st.phaseStart=s.phaseStart; st.phasePaused=s.phasePaused;
+  st.warned10=s.warned10; st.leadBeep=s.leadBeep; st.cycleMinCur=s.cycleMinCur;
+  // Samples taken during the switch you just took back belong to the phase you are
+  // returning to, or the CSV and the phase-split HRV disagree with the timeline.
+  for (const x of st.samples) if (x.t >= s.at){ x.ph=s.phase; x.cy=s.cycle; }
+  // The reading that caused the switch is usually still on screen, so re-arming
+  // immediately would bounce you straight back out. Auto-switch stays off until the
+  // number clears the target by the margin (see rearmAt) — in practice that means
+  // Next is how you leave this phase. Safety aborts are NOT disarmed: the floor, the
+  // desaturation rate guard and the HR rules all keep running.
+  st.holdSince=0; st.holdLast=0; st.disarmed=true;
+  dlog(`undo → back to ${s.phase==='H'?'hypoxia':'recovery'}, cycle ${s.cycle}`);
+  if (s.phase==='H'){ cueHyp(); speak('cycle-'+s.cycle, `Back to cycle ${s.cycle}. Mask on.`); }
+  else { cueRec(); speak('recovery', 'Back to recovery — mask off.'); }
+  renderChips();
+  render();
+}
+function advance(reason){
+  if(!st.running) return;
+  const snap = snapshot();
+  closePhase();
+  if (st.phase==='H'){
+    enterPhase('R');
+    st.undo.push(snap);
+    if (reason==='target' || reason==='target-deep')
+      speak('target-recovery', 'Target reached. Recovery — mask off.');
+  } else {
+    if (st.cycle >= S.cycles) return finish();
+    st.cycle++;
+    enterPhase('H');
+    st.undo.push(snap);
+  }
+  if (st.undo.length > 30) st.undo.shift();
+  render();
+}
+function finish(){
+  closePhase();
+  st.doneAt = now();
+  st.running=false; st.done=true; st.phase=null;
+  cueDone(); speak('complete', 'Session complete.');
+  releaseWakeLock();
+  showSummary();
+  saveSession();
+  render();
+}
+function togglePause(){
+  if(!st.running) return;
+  if(!st.paused){ st.paused=true; st.pauseAt=now(); }
+  else { const d=now()-st.pauseAt; st.phasePaused+=d; st.sessPaused+=d; st.paused=false; }
+  render();
+}
+function endSession(){ if(st.running) finish(); }
+
+function tick(){
+  if (st.running && !st.paused){
+    const ps = phaseSec();
+    if (ps < 0){                                   // lead-in: tick down to the start
+      const c = Math.ceil(-ps);
+      if (st.leadBeep !== c){ st.leadBeep = c; cueTick(); }
+    } else {
+      const remain = st.phaseDur - ps;
+      if (remain<=10.3 && remain>9 && !st.warned10){ st.warned10=true; cueTick(); }
+      if (remain<=0) advance('time');
+    }
+  }
+  render();
+}
+setInterval(tick, 250);
+
+/* ============================== samples ==============================
+   Auto-switch is timed, not counted. The old rule was "3 readings in a row past the
+   target", which sounds like three seconds and is not: these oximeters notify several
+   times a second, so a single transient dip — the kind a finger probe throws on any
+   movement — ended a hypoxic phase in well under a second. The number now has to sit
+   at or past the target for S.hold seconds of wall clock; anything that comes back up
+   restarts the hold. A reading S.margin points past the target is not an artifact
+   worth waiting out and switches at once. */
+// Declarations, not const arrows: these are used inside render(), which runs on a
+// 250 ms interval registered earlier in the file. A const would sit in the temporal
+// dead zone if anything above ever threw during load, and render() would then throw
+// on every tick — freezing the clock. Hoisted functions cannot do that.
+function holdSec(){ return st.holdSince ? (now()-st.holdSince)/1000 : 0; }
+// Where the reading has to get back to before a disarmed auto-switch trusts itself
+// again. Merely clearing the target is not enough: sitting one point off it, noise
+// alone re-arms within a sample and switches again a few seconds later, so undo
+// would just be a treadmill. Clearing it by the margin means either the reading that
+// caused the switch really was an artifact, or you have genuinely come back up.
+const rearmAt = () => st.phase==='H' ? S.low + Math.max(1,S.margin||0)
+                                     : S.recd - Math.max(1,S.margin||0);
+function autoSwitch(sp){
+  if (st.disarmed){                                          // set by undo
+    if (st.phase==='H' ? sp > rearmAt() : sp < rearmAt()) st.disarmed=false;
+    return null;
+  }
+  const past = st.phase==='H' ? sp<=S.low : sp>=S.recd;      // on the switching side of the target
+  const on = st.phase==='H' ? S.autoLow : st.phase==='R' ? S.autoRec : false;
+  if (!on || phaseSec() <= 0) return null;                   // off, or still in the changeover lead-in
+  if (!past){ st.holdSince=0; return null; }
+  // Deep enough past the target that waiting is pointless.
+  const m = Math.max(0, S.margin||0);
+  if (st.phase==='H' ? sp <= S.low-m : sp >= S.recd+m)
+    return st.phase==='H' ? 'target-deep' : 'recovered-fast';
+  // A gap in the data is not time spent at target — restart rather than credit it.
+  if (!st.holdSince || now()-st.holdLast > 3000) st.holdSince = now();
+  st.holdLast = now();
+  const minPhase = st.phase==='H' ? 20 : 45;                 // don't switch on carry-over from the last phase
+  if (holdSec() >= (S.hold||0) && phaseSec() >= minPhase)
+    return st.phase==='H' ? 'target' : 'recovered';
+  return null;
+}
+function onSample(sp, hr, pai){
+  if (sp!=null && (sp<35 || sp>100)) sp=null;
+  if (hr!=null && (hr<20 || hr>250)) hr=null;
+  st.spo2=sp; st.hr=hr; st.pai=pai; st.lastSample=now();
+
+  if (st.running && !st.paused){
+    if (sp!=null){
+      if (st.phase==='H' && (st.cycleMinCur==null || sp<st.cycleMinCur)) st.cycleMinCur=sp;
+      const trig = autoSwitch(sp);
+      if (trig) return advance(trig);
+    }
+  }
+  // alarm — independent of session state
+  if (sp!=null && sp<=S.floor && now()>st.alarmSilencedUntil){
+    if(!st.alarm){ st.alarm=true; speak('remove-mask', 'Remove mask now.'); }
+  } else if (st.alarm && (sp==null || sp>=S.floor+3)){
+    st.alarm=false;
+  }
+  render();
+}
+// Uniform 1 Hz recorder — decoupled from device cadence so the oximeter and the
+// strap (which notify independently) land on one time base.
+setInterval(()=>{
+  if (!st.running || st.paused) return;
+  const fresh = now()-st.lastSample < 6000, hf = hrFresh();
+  st.samples.push({
+    t:now(), s:+sessionSec().toFixed(1), ph:st.phase, cy:st.cycle,
+    sp: fresh?st.spo2:null, hr: fresh?st.hr:null, pai: fresh?st.pai:null,
+    shr: hf?hrv.hr:null, rm: hrvSource()?liveRmssd():null,
+    orm: oxbFresh()?rmssdOf(oxWindow(60)):null
+  });
+}, 1000);
+setInterval(()=>{ // alarm siren
+  if (st.alarm && now()>st.alarmSilencedUntil){ beep(950,.18,0,.5); beep(950,.18,.3,.5); }
+}, 1000);
+// Safety: losing the oximeter mid-hypoxia is the dangerous failure mode — the app
+// can no longer see desaturation, and a frozen number reads as reassurance.
+let lostWarned=0;
+setInterval(()=>{
+  if (!st.running || st.paused || st.phase!=='H'){ st.signalLost=false; lostWarned=0; return; }
+  st.signalLost = phaseSec() > 20 && now()-st.lastSample > 15000;
+  if (st.signalLost && now()-lostWarned > 12000){
+    lostWarned = now();
+    beep(880,.12,0,.45); beep(660,.12,.16,.45);
+    speak('signal-lost-check', 'Signal lost. Check the sensor, or take the mask off.');
+    render();
+  }
+}, 1000);
+$('btnSilence').onclick = ()=>{ st.alarmSilencedUntil = now()+60000; render(); };
+
+/* ============================== simulation ============================== */
+let simTimer=null, simV={sp:97, hr:62};
+function syncSim(){
+  if (S.sim && !simTimer){
+    simTimer = setInterval(()=>{
+      // realistic kinetics: ~0.05 pts/s desaturation, faster resaturation
+      const inH = st.running && !st.paused && st.phase==='H';
+      const spT = inH ? 82 : 97.5, tau = inH ? 300 : 45;
+      const hrT = inH ? 84 : 62;
+      simV.sp += (spT-simV.sp)*(1/tau);
+      simV.hr += (hrT-simV.hr)*(1/20);
+      if (st.running && !st.paused) st.simUsed = true;   // never store fake data as a session
+      onSample(Math.round(Math.min(99, simV.sp + (Math.random()-.5)*1.2)),
+               Math.round(simV.hr + (Math.random()-.5)*3), 2.1);
+    }, 1000);
+  } else if (!S.sim && simTimer){ clearInterval(simTimer); simTimer=null; }
+}
+syncSim();
+
+/* ============================== bluetooth ============================== */
+const NONIN_SVC  = '46a970e0-0d5f-11e2-8b5e-0002a5d5c51b';
+const NONIN_MEAS = '0aad7ea0-0d60-11e2-8e3c-0002a5d5c51b';
+// Undocumented per-beat characteristic on the same proprietary service. The
+// documented one (NONIN_MEAS) reports a 4-beat-AVERAGED pulse rate, which is
+// useless for variability; this one emits one record per heartbeat. Enumerated
+// off the device 2026-08-14 — 126 records in 103.1 s against 124 expected beats.
+const NONIN_BEAT = '34e27863-76ff-4f8e-96f1-9e3993aa6199';
+// candidate vendor services — PO60's custom service is one of the ffxx family
+const CAND_SVCS  = [0x1822,'battery_service','device_information',NONIN_SVC,
+                    0xff00,0xff10,0xff12,0xffb0,0xffe0,0xffe5,0xfff0,0xfee0,0xfee9,0xfe00];
+let btDevice=null, btMode=null, btWrite=null, wantConnected=false, battTimer=null;
+
+function setBt(cls, txt){ const p=$('btPill'); p.className='pill '+cls; $('btText').textContent=txt; }
+
+async function connectFlow(allDevices){
+  if (btDevice && btDevice.gatt.connected){ wantConnected=false; btDevice.gatt.disconnect(); return; }
+  if (btDevice && wantConnected){ // waiting for SYNC — click cancels the wait
+    wantConnected=false; try{ btDevice.gatt.disconnect(); }catch(e){}
+    setBt('','disconnected'); $('btnConnect').textContent='Connect SpO₂'; return;
+  }
+  if (!navigator.bluetooth){ setBt('','Web Bluetooth unavailable — use Chrome/Arc'); return; }
+  ac();
+  try{
+    btDevice = await navigator.bluetooth.requestDevice(
+      allDevices===true
+        ? {acceptAllDevices:true, optionalServices:CAND_SVCS}
+        : {filters:[{services:[NONIN_SVC]},{namePrefix:'Nonin'},{namePrefix:'PO'},
+                    {namePrefix:'Beurer'},{services:[0x1822]}],
+           optionalServices:CAND_SVCS});
+    btDevice.addEventListener('gattserverdisconnected', onBtDrop);
+    wantConnected=true;
+    await keepConnecting();
+  }catch(e){
+    dlog('connect: '+e.message);
+    if (!/cancel/i.test(e+'')) setBt('','pick failed — device on & finger in?');
+    else setBt('', btDevice ? 'disconnected' : 'not connected');
+  }
+}
+async function gattConnect(){
+  setBt('mid','connecting…');
+  const server = await btDevice.gatt.connect();
+  btMode=null; btWrite=null;
+  let svcs=[];
+  try{ svcs = await server.getPrimaryServices(); }catch(e){ dlog('svc enum: '+e.message); }
+  dlog('services: '+(svcs.map(s=>s.uuid.slice(0,8)).join(' ')||'none visible'));
+  // deterministic preference — PLX is verified working on the Nonin 3230 (SpO2+PR+PAI);
+  // enumeration order is not guaranteed, so pick explicitly rather than first-match.
+  const plx   = svcs.find(s=>s.uuid.startsWith('00001822'));
+  const nonin = svcs.find(s=>s.uuid===NONIN_SVC);
+  if (plx)              await tryPLX(plx);
+  if (!btMode && nonin) await tryNonin(nonin);
+  if (!btMode) for (const svc of svcs){ if (await tryBeurer(svc)) break; }
+  if (!btMode){
+    setBt('','connected — no oximeter service found');
+    dlog('no usable service — check chrome://bluetooth-internals for the real service UUID');
+    return;
+  }
+  setBt('on', (btDevice.name||'oximeter') + ' · ' + btMode);
+  $('btnConnect').textContent='Disconnect';
+  readDeviceInfo(server);
+  readBattery(server);
+  if (battTimer) clearInterval(battTimer);
+  battTimer = setInterval(()=>{ if(btDevice?.gatt.connected) readBattery(btDevice.gatt); }, 120000);
+}
+async function tryNonin(svc){
+  try{
+    const ch = await svc.getCharacteristic(NONIN_MEAS);
+    await ch.startNotifications();
+    ch.addEventListener('characteristicvaluechanged', e=>parseNonin(e.target.value));
+    btMode='nonin'; noninSeen=0;
+    dlog('Nonin oximetry service live — streaming ~1 Hz while a finger is inserted');
+    // Per-beat intervals: this is what lets the oximeter drive HRV without a strap.
+    try{
+      const bc = await svc.getCharacteristic(NONIN_BEAT);
+      await bc.startNotifications();
+      bc.addEventListener('characteristicvaluechanged', e=>parseNoninBeats(e.target.value));
+      oxb.live = true;
+      dlog('Nonin per-beat characteristic live — interbeat intervals feed HRV');
+    }catch(e){ dlog('nonin beat char unavailable: '+e.message); }
+    return true;
+  }catch(e){ dlog('nonin setup: '+e.message); return false; }
+}
+async function tryPLX(svc){
+  try{
+    const ch = await svc.getCharacteristic(0x2a5f);
+    await ch.startNotifications();
+    ch.addEventListener('characteristicvaluechanged', e=>parsePLX(e.target.value));
+    btMode='plx'; return true;
+  }catch(e){ return false; }
+}
+async function tryBeurer(svc){
+  try{
+    const chs = await svc.getCharacteristics();
+    dlog('chars@'+svc.uuid.slice(4,8)+': '+chs.map(c=>{
+      const p=c.properties, f=[];
+      if(p.read)f.push('r'); if(p.write||p.writeWithoutResponse)f.push('w');
+      if(p.notify)f.push('n'); if(p.indicate)f.push('i');
+      return c.uuid.slice(4,8)+'('+f.join('')+')';
+    }).join(' '));
+    const n = chs.find(c=>c.uuid.startsWith('0000ff02'));
+    const w = chs.find(c=>c.uuid.startsWith('0000ff01'));
+    if (!n || !w) return false;
+    await n.startNotifications();
+    n.addEventListener('characteristicvaluechanged', e=>parseBeurer(e.target.value));
+    btWrite=w; btMode='po60';
+    $('dbg').hidden=false;
+    po60.sawAny=false;
+    dlog('PO60 ready — listening 6 s for spontaneous/live frames, then syncing stored readings');
+    setTimeout(()=>{ if(btMode==='po60' && !po60.sawAny) po60Sync(); }, 6000);
+    return true;
+  }catch(e){ dlog('beurer setup: '+e.message); return false; }
+}
+// Device Information Service — manufacturer/model/firmware strings.
+// Genuine-firmware check: clones rarely populate these correctly.
+async function readDeviceInfo(server){
+  const F = [['manufacturer_name_string','manufacturer'],['model_number_string','model'],
+             ['serial_number_string','serial'],['hardware_revision_string','hw'],
+             ['firmware_revision_string','fw'],['software_revision_string','sw'],
+             ['system_id','system_id']];
+  try{
+    const svc = await server.getPrimaryService('device_information');
+    for (const [uuid,label] of F){
+      try{
+        const dv = await (await svc.getCharacteristic(uuid)).readValue();
+        const b  = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+        const txt = label==='system_id'
+          ? hex(b)
+          : new TextDecoder().decode(b).replace(/\0+$/,'').trim();
+        if (txt) dlog('DIS '+label+': '+txt);
+      }catch(e){ dlog('DIS '+label+': (absent)'); }
+    }
+  }catch(e){ dlog('DIS: no device-information service — '+e.message); }
+}
+async function readBattery(server){
+  try{
+    const svc = await server.getPrimaryService('battery_service');
+    const ch  = await svc.getCharacteristic('battery_level');
+    const v = (await ch.readValue()).getUint8(0);
+    $('battPill').hidden=false; $('battText').textContent=v+'%';
+  }catch(e){}
+}
+const isNonin = () => /nonin/i.test(btDevice?.name||'');
+const wakeHint = () => isNonin()
+  ? 'waiting — insert a finger to wake the Nonin…'
+  : 'waiting — hold PO60 button 5 s (SYNC)…';
+let reconnLoop=false;
+async function keepConnecting(){
+  if (reconnLoop) return; reconnLoop=true;
+  try{
+    while (wantConnected && btDevice && !btDevice.gatt.connected){
+      try{ await gattConnect(); }
+      catch(e){
+        if (!wantConnected) break;
+        setBt('mid', wakeHint());
+        await new Promise(r=>setTimeout(r,2000));
+      }
+    }
+  } finally { reconnLoop=false; }
+}
+async function onBtDrop(){
+  if (!wantConnected){ setBt('','disconnected'); $('btnConnect').textContent='Connect SpO₂'; return; }
+  setBt('mid', wakeHint());
+  dlog('disconnected — will auto-reconnect as soon as the device advertises again');
+  keepConnecting();
+}
+// re-adopt a previously granted device after page reload — no chooser needed
+(async()=>{
+  try{
+    const ds = await (navigator.bluetooth?.getDevices?.() ?? []);
+    if (!ds.length) return;
+    btDevice = ds.find(d=>/nonin/i.test(d.name||''))
+            || ds.find(d=>/PO ?60|Beurer/i.test(d.name||'')) || ds[0];
+    btDevice.addEventListener('gattserverdisconnected', onBtDrop);
+    wantConnected=true;
+    dlog('known device: '+(btDevice.name||btDevice.id)+' — reconnecting when it advertises');
+    setBt('mid', wakeHint());
+    keepConnecting();
+  }catch(e){ dlog('getDevices: '+e.message); }
+})();
+$('btnConnect').onclick = ()=>connectFlow(false);
+$('btnConnectHr').onclick = connectHr;
+$('btnScanAll').onclick = ()=>connectFlow(true);
+
+// Nonin 3230 proprietary oximetry packet. Offsets confirmed against
+// github.com/andreasdri/nonin-3230-ble: status byte 1, counter int16BE @5,
+// SpO2 byte 7, pulse int16BE @8. Status bits: 0x40 encrypted, 0x20 low battery,
+// 0x10 correct-check (questionable data), 0x08 searching, 0x04 SmartPoint.
+let noninSeen=0;
+function parseNonin(dv){
+  if (dv.byteLength<10) return;
+  const b=new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+  if (noninSeen<8) dlog('nonin RX '+hex(b));
+  noninSeen++;
+
+  const status = dv.getUint8(1);
+  const searching = !!(status & 0x08), lowBatt = !!(status & 0x20), suspect = !!(status & 0x10);
+  let sp = dv.getUint8(7);   if (sp===127) sp=null;
+  let hr = dv.getUint16(8);  if (hr===511) hr=null;
+  if (searching){ sp=null; hr=null; }
+
+  // secondary fields are not confirmed by the reference impl — show only when plausible
+  const rawB = dv.getUint8(2), rawP = dv.getUint16(3);
+  const battV = rawB>=15 && rawB<=50 ? rawB/10 : null;
+  const pai   = rawP>0 && rawP<=2500 ? rawP/100 : null;
+  if (battV!=null){
+    $('battPill').hidden=false;
+    $('battText').textContent = battV.toFixed(1)+' V' + (lowBatt?' ⚠ low':'');
+  } else if (lowBatt){ $('battPill').hidden=false; $('battText').textContent='⚠ low battery'; }
+
+  if (noninSeen===9) dlog('…raw logging stopped (parsed values continue on the display)');
+  $('targetHint').dataset.q = suspect ? 'suspect' : '';
+  onSample(sp, hr, pai);
+}
+/* ---------------- Nonin per-beat intervals -> HRV ---------------- */
+// Packet: LL 00 CC 00 then N x 4-byte records [u16 amplitude][u8 interval][u8 crc],
+// where LL = 4 + 4N and N is 0/1/2 per ~1 Hz packet (2 when a second holds two
+// beats). Byte 6 is the interbeat interval; the unit is ~26 ms and is NOT a
+// documented constant, so it is calibrated below rather than trusted.
+//
+// NOTE ON WHAT THIS IS: intervals timed at the fingertip are pulse rate
+// variability, not HRV. Pulse transit time varies with blood pressure, vascular
+// tone and respiration — and vasoconstriction under hypoxia is exactly what IHT
+// provokes. Treat oximeter-derived RMSSD as directional during hypoxic phases.
+const oxb = {live:false, unit:0.02595, counts:[], calBy:null, rejected:0};
+const oxrr = {rr:[], rejT:[], brk:true, rejected:0, total:0};
+function oxPush(ms){
+  oxrr.total++;
+  let ok = ms>=RR_MIN && ms<=RR_MAX;
+  if (ok && oxrr.rr.length){
+    const recent = oxrr.rr.slice(-5).map(x=>x.ms).sort((a,b)=>a-b);
+    const ref = recent[Math.floor(recent.length/2)];
+    if (Math.abs(ms-ref)/ref > RR_TOL) ok=false;
+  }
+  if (!ok){ oxrr.rejected++; oxrr.brk=true; oxrr.rejT.push(now()); return; }
+  oxrr.rr.push({t:now(), ms, cont: !oxrr.brk});
+  oxrr.brk=false;
+  const cut = now()-600000;
+  while (oxrr.rr.length && oxrr.rr[0].t < cut) oxrr.rr.shift();
+  while (oxrr.rejT.length && oxrr.rejT[0] < cut) oxrr.rejT.shift();
+}
+const oxWindow = (sec)=>{ const c=now()-sec*1000; return oxrr.rr.filter(x=>x.t>=c); };
+function oxArtifactRate(sec=60){
+  const c = now()-sec*1000;
+  const good = oxrr.rr.filter(x=>x.t>=c).length;
+  const bad  = oxrr.rejT.filter(t=>t>=c).length;
+  return (good+bad) ? bad/(good+bad) : null;
+}
+
+function parseNoninBeats(dv){
+  if (dv.byteLength < 4) return;
+  const n = Math.floor((dv.getUint8(0) - 4) / 4);
+  const t = now();
+  for (let i=0;i<n;i++){
+    const o = 4 + 4*i;
+    if (o+3 >= dv.byteLength) break;
+    const count = dv.getUint8(o+2);
+    const ms = count * oxb.unit * 1000;
+    if (ms < RR_MIN || ms > RR_MAX){ oxb.rejected++; continue; }
+    oxb.counts.push({t, n:count});
+    if (oxb.counts.length > 900) oxb.counts.shift();
+    // Reuse the strap's artifact rejection and buffer so every downstream
+    // consumer — charts, per-phase summaries, CSV — works unchanged.
+    oxPush(ms);
+    if (!hrFresh()) rrPush(ms);
+  }
+  oxCalibrate();
+}
+
+// Beats are contiguous, so the intervals between the first and last buffered
+// beat must sum to the wall-clock time between them. That pins seconds-per-count
+// with no reference device, which is what lets the oximeter replace the strap.
+function oxCalibrate(){
+  const c = oxb.counts;
+  if (c.length < 45) return;
+  const span = (c[c.length-1].t - c[0].t)/1000;
+  const total = c.slice(1).reduce((a,x)=>a+x.n, 0);
+  if (span <= 0 || total < 40) return;
+  const u = span/total;
+  if (u < 0.015 || u > 0.045) return;     // true value ~26 ms; outside = bad window
+  oxb.unit = u; oxb.calBy = 'clock';
+}
+
+function sfloat(raw){
+  if ([0x07FF,0x0800,0x07FE,0x0802,0x0801].includes(raw)) return null;
+  let m = raw & 0x0FFF, e = raw>>12;
+  if (e>=8) e-=16; if (m>=2048) m-=4096;
+  return m*Math.pow(10,e);
+}
+function parsePLX(dv){ // standard PLX continuous measurement
+  if (dv.byteLength<5) return;
+  const flags = dv.getUint8(0);
+  const sp = sfloat(dv.getUint16(1,true));
+  const hr = sfloat(dv.getUint16(3,true));
+  let o=5;
+  if (flags&1) o+=4;
+  if (flags&2) o+=4;
+  if (flags&4) o+=2;
+  if (flags&8) o+=3;
+  let pai=null;
+  if (flags&16 && dv.byteLength>=o+2) pai = sfloat(dv.getUint16(o,true));
+  onSample(sp==null?null:Math.round(sp), hr==null?null:Math.round(hr), pai);
+}
+
+/* ============================== beurer po60 ============================== */
+// protocol per github.com/Shreyan1/Beurer-PO60-PulseOximeter-Bluetooth-Integration:
+// write FF01, notify FF02; sync = [90 05 15] then [99 00 19]; stored record = 0xE9 packet
+// (SpO2 max/min/avg at bytes 17-19) followed by a headerless packet with PR max/min/avg.
+const po60 = {sawAny:false, recs:[], pending:null};
+const p2  = n => String(n).padStart(2,'0');
+const hex = b => Array.from(b, x=>x.toString(16).padStart(2,'0')).join(' ');
+function dlog(msg){
+  console.log('[iht]', msg);
+  const el=$('dbgLog'); if(!el) return;
+  el.textContent += new Date().toTimeString().slice(0,8)+'  '+msg+'\n';
+  const lines=el.textContent.split('\n');
+  if (lines.length>300) el.textContent=lines.slice(-300).join('\n');
+  el.scrollTop=el.scrollHeight;
+}
+function parseBeurer(dv){
+  po60.sawAny=true;
+  const b=new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+  dlog('RX '+hex(b));
+  if (b[0]===0xE9 && b.length>=20){
+    const t={y:2000+(b[8]&0x7f), mo:b[9]&0x0f, d:b[10]&0x1f, h:b[11]&0x1f, mi:b[12]&0x3f};
+    po60.pending={t, spMax:b[17]&0x7f, spMin:b[18]&0x7f, spAvg:b[19]&0x7f};
+  } else if (po60.pending && b.length>=3 && b[0]!==0xE9){
+    const r=po60.pending; po60.pending=null;
+    r.prMax=b[0]&0x7f; r.prMin=b[1]&0x7f; r.prAvg=b[2]&0x7f;
+    po60.recs.push(r);
+    dlog(`stored: ${r.t.y}-${p2(r.t.mo)}-${p2(r.t.d)} ${p2(r.t.h)}:${p2(r.t.mi)}  SpO₂ avg ${r.spAvg} (${r.spMin}–${r.spMax}) · PR avg ${r.prAvg}`);
+    $('targetHint').textContent =
+      `PO60 last stored: SpO₂ ${r.spAvg}% (min ${r.spMin} / max ${r.spMax}) · pulse ${r.prAvg} @ ${p2(r.t.h)}:${p2(r.t.mi)}`;
+  }
+}
+async function po60Tx(bytes){
+  if (!btWrite){ dlog('TX skipped — no write characteristic'); return; }
+  try{ dlog('TX '+hex(bytes)); await btWrite.writeValue(new Uint8Array(bytes)); }
+  catch(e){ dlog('TX err: '+e.message); }
+}
+async function po60Sync(){
+  await po60Tx([0x90,0x05,0x15]);
+  await new Promise(r=>setTimeout(r,400));
+  await po60Tx([0x99,0x00,0x19]);
+}
+
+/* ============================== safety ==============================
+   Rules taken from supervised-trial protocols. The governing finding is that the
+   user cannot be the monitor: 42% of screened, trained aviators did not perceive
+   they were hypoxic, and hypoxia removes the insight needed to notice that.
+   So every rule here is automatic — none depends on you feeling bad. */
+function abortToRecovery(reason, spokenKey){
+  if (!st.running || st.phase!=='H') return;
+  dlog('SAFETY abort → recovery: '+reason);
+  st.abortNote = reason;
+  beep(950,.2,0,.5); beep(760,.25,.24,.5);
+  speak(spokenKey || 'mask-off-now', 'Take the mask off now.');
+  advance('safety');
+}
+function abortSession(reason, spokenKey){
+  if (!st.running) return;
+  dlog('SAFETY end session: '+reason);
+  st.abortNote = reason;
+  speak(spokenKey || 'ending', 'Ending the session.');
+  endSession();
+}
+
+// Deliberately simple. Earlier versions layered on rate-of-change, heart-rate and
+// cumulative-exposure rules taken from supervised-trial protocols; in real sessions
+// every one of them produced false positives and nothing else, which trains you to
+// dismiss the alarm — worse than not having it. SpO2 is the dose and the monitor.
+let liveDue=0, liveAsked=0;
+setInterval(()=>{
+  if (!st.running || st.paused){ st.liveWait=false; return; }
+  const fresh = now()-st.lastSample < 6000;
+
+  if (st.phase==='H' && phaseSec() > 0){    // suspended during the changeover lead-in
+    // the floor: stop the hypoxic phase and sound the alarm
+    if (fresh && st.spo2!=null && st.spo2 <= S.floor)
+      return abortToRecovery(`SpO₂ ${st.spo2}% at or below floor ${S.floor}%`);
+    // grace period after phase start — st.lastSample is 0 until the first reading
+    if (phaseSec() > 30 && now()-st.lastSample > 30000)
+      return abortToRecovery('SpO₂ signal lost >30 s', 'signal-lost');
+
+    // Liveness check — substitutes for the observer who would notice you fall asleep
+    // or lose consciousness. Symptom self-reports do not catch either.
+    if (S.liveCheck){
+      if (!st.liveWait && now() > liveDue){
+        st.liveWait=true; liveAsked=now(); beep(660,.1,0,.3); render();
+      }
+      if (st.liveWait && now()-liveAsked > 25000)
+        return abortToRecovery('no response to liveness check', 'no-response');
+    } else if (st.liveWait){
+      st.liveWait=false;              // clear a prompt left on screen by the toggle
+    }
+  } else { st.liveWait=false; liveDue = now()+90000; }
+}, 500);
+function liveAck(){
+  if (!st.liveWait) return false;
+  st.liveWait=false; liveDue = now()+90000; beep(880,.07,0,.2); render();
+  return true;
+}
+
+/* ============================== polar h10 / hrv ============================== */
+// Standard Heart Rate Service. The RR intervals (flags bit 4) are the whole point:
+// they give true beat-to-beat timing, which an oximeter's averaged pulse rate cannot.
+const HRS = 0x180d, HRM = 0x2a37;
+let hrDev=null, hrWant=false, hrLoop=false, hrLast=0;
+const hrv = {rr:[], rejT:[], hr:null, rejected:0, total:0, brk:true, contact:null};
+
+function setHr(cls, txt){ $('hrPill').className='pill '+cls; $('hrText').textContent=txt; }
+const hrFresh = ()=> now()-hrLast < 6000;
+// A connected-but-silent strap is easy to miss: the pill stays green from the connect
+// handshake while no notification ever arrives, and you lose the whole session's HRV.
+// Display warning only — it never stops a phase.
+setInterval(()=>{
+  if (!hrDev?.gatt.connected) return;
+  if (!hrFresh()) setHr('mid','strap connected but no data — re-wet the electrodes');
+}, 4000);
+
+async function connectHr(){
+  if (hrDev && hrDev.gatt.connected){ hrWant=false; hrDev.gatt.disconnect(); return; }
+  if (hrDev && hrWant){ hrWant=false; try{hrDev.gatt.disconnect();}catch(e){}
+    setHr('','disconnected'); $('btnConnectHr').textContent='Connect HR'; return; }
+  if (!navigator.bluetooth){ setHr('','Web Bluetooth unavailable'); return; }
+  ac();
+  try{
+    hrDev = await navigator.bluetooth.requestDevice({
+      filters:[{services:[HRS]},{namePrefix:'Polar'}],
+      optionalServices:[HRS,'battery_service','device_information']
+    });
+    hrDev.addEventListener('gattserverdisconnected', onHrDrop);
+    hrWant=true;
+    await hrKeepConnecting();
+  }catch(e){
+    dlog('hr connect: '+e.message);
+    setHr('', /cancel/i.test(e+'') ? (hrDev?'disconnected':'no strap') : 'pick failed');
+  }
+}
+async function hrConnect(){
+  setHr('mid','connecting…');
+  const server = await hrDev.gatt.connect();
+  const ch = await (await server.getPrimaryService(HRS)).getCharacteristic(HRM);
+  await ch.startNotifications();
+  ch.addEventListener('characteristicvaluechanged', e=>parseHrm(e.target.value));
+  setHr('on', hrDev.name||'HR strap');
+  $('btnConnectHr').textContent='Disconnect HR';
+  dlog('HR strap live: '+(hrDev.name||'?')+' — RR intervals feed HRV');
+}
+async function hrKeepConnecting(){
+  if (hrLoop) return; hrLoop=true;
+  try{
+    while (hrWant && hrDev && !hrDev.gatt.connected){
+      try{ await hrConnect(); }
+      catch(e){ if(!hrWant) break; setHr('mid','waiting for strap…'); await new Promise(r=>setTimeout(r,2000)); }
+    }
+  } finally { hrLoop=false; }
+}
+function onHrDrop(){
+  $('btnConnectHr').textContent='Connect HR';
+  if (!hrWant){ setHr('','disconnected'); return; }
+  setHr('mid','waiting for strap…'); hrKeepConnecting();
+}
+
+// Heart Rate Measurement 0x2A37: flags, HR (uint8/uint16 per bit0),
+// optional energy-expended (bit3), then RR intervals in 1/1024 s units (bit4).
+function parseHrm(dv){
+  const flags = dv.getUint8(0);
+  let o = 1;
+  const v = (flags & 0x01) ? dv.getUint16(o,true) : dv.getUint8(o);
+  o += (flags & 0x01) ? 2 : 1;
+  hrv.contact = (flags & 0x02) ? !!(flags & 0x04) : null;
+  if (flags & 0x08) o += 2;
+  if (flags & 0x10) for (; o+1 < dv.byteLength; o += 2) rrPush(dv.getUint16(o,true)*1000/1024);
+  hrv.hr = v>0 ? v : null;
+  hrLast = now();
+  if (hrv.contact===false) setHr('mid','poor contact — moisten the strap');
+  else if (hrDev?.gatt.connected) setHr('on', hrDev.name||'HR strap');
+  render();
+}
+
+// RR artifact rejection. Ectopic and missed beats destroy RMSSD, so reject beats
+// outside physiological bounds or deviating >20% from the local median (Malik-style),
+// and mark the discontinuity so successive differences never span a gap.
+const RR_MIN=270, RR_MAX=2000, RR_TOL=0.20;
+function rrPush(ms){
+  hrv.total++;
+  let ok = ms>=RR_MIN && ms<=RR_MAX;
+  if (ok && hrv.rr.length){
+    const recent = hrv.rr.slice(-5).map(x=>x.ms).sort((a,b)=>a-b);
+    const ref = recent[Math.floor(recent.length/2)];
+    if (Math.abs(ms-ref)/ref > RR_TOL) ok=false;
+  }
+  if (!ok){ hrv.rejected++; hrv.brk=true; hrv.rejT.push(now()); return; }
+  hrv.rr.push({t:now(), ms, cont: !hrv.brk});
+  hrv.brk=false;
+  const cut = now()-600000;
+  while (hrv.rr.length && hrv.rr[0].t < cut) hrv.rr.shift();
+  while (hrv.rejT.length && hrv.rejT[0] < cut) hrv.rejT.shift();
+}
+// RMSSD is extraordinarily artifact-sensitive: Bourdillon 2022 (n=178) measured a
+// 413% inflation from ONE inserted artifact, with significant bias above ~0.9%
+// artifact content. Rejected beats are excluded rather than interpolated here, but
+// a window that needed heavy correction still cannot be trusted — gate on that.
+function rrArtifactRate(sec=60){
+  const c = now()-sec*1000;
+  const good = hrv.rr.filter(x=>x.t>=c).length;
+  const bad  = hrv.rejT.filter(t=>t>=c).length;
+  return (good+bad) ? bad/(good+bad) : null;
+}
+const rrWindow = (sec)=>{ const c=now()-sec*1000; return hrv.rr.filter(x=>x.t>=c); };
+function rmssdOf(seq){
+  let s=0,n=0;
+  for (let i=1;i<seq.length;i++){
+    if (!seq[i].cont) continue;
+    const d = seq[i].ms - seq[i-1].ms;
+    s += d*d; n++;
+  }
+  return n>=8 ? Math.sqrt(s/n) : null;   // RMSSD is valid on short windows; ~10 beats min
+}
+function sdnnOf(seq){
+  if (seq.length<20) return null;
+  const m = seq.reduce((a,b)=>a+b.ms,0)/seq.length;
+  return Math.sqrt(seq.reduce((a,b)=>a+(b.ms-m)**2,0)/seq.length);
+}
+// Proportion of successive intervals differing by >50 ms — a parasympathetic
+// index that saturates less than RMSSD at high vagal tone.
+function pnn50Of(seq){
+  let hits=0, n=0;
+  for (let i=1;i<seq.length;i++){
+    if (!seq[i].cont) continue;
+    if (Math.abs(seq[i].ms - seq[i-1].ms) > 50) hits++;
+    n++;
+  }
+  return n>=8 ? hits/n : null;
+}
+// Mean rate straight from the intervals, independent of whatever either device
+// reports as its own averaged pulse.
+function hrFromRR(seq){
+  if (seq.length<5) return null;
+  const m = seq.reduce((a,b)=>a+b.ms,0)/seq.length;
+  return m>0 ? 60000/m : null;
+}
+// The oximeter's per-beat stream counts as a live HRV source in its own right.
+const oxbFresh = ()=> oxb.live && oxrr.rr.length>0 && (now()-oxrr.rr[oxrr.rr.length-1].t) < 6000;
+// Which device is supplying intervals right now. The strap wins when both are
+// live: it times the heart directly, the finger times a pressure wave.
+const hrvSource = ()=> hrFresh() ? 'strap' : (oxbFresh() ? 'oximeter' : null);
+
+// Peripheral chemoreflex sensitivity: how hard the heart rate responds per 1%
+// of desaturation. Least-squares slope of HR on SpO2 across hypoxic-phase
+// samples, sign-flipped so a positive number means "HR climbs as SpO2 falls",
+// which is the physiologically expected direction.
+//
+// This is the adaptation IHT is actually training, and nothing else in the app
+// reported it. Requires real spread in SpO2 — a flat trace has no slope to fit,
+// so it returns null rather than a number fitted to noise.
+function chemoreflexSlope(samples){
+  const src = samples || st.samples;
+  const pts = src.filter(x => x.ph==='H' && x.sp!=null && x.hr!=null);
+  if (pts.length < 30) return null;
+  const xs = pts.map(p=>p.sp), ys = pts.map(p=>p.hr);
+  const n = xs.length;
+  const mx = xs.reduce((a,b)=>a+b,0)/n, my = ys.reduce((a,b)=>a+b,0)/n;
+  let sxx=0, sxy=0;
+  for (let i=0;i<n;i++){ const dx=xs[i]-mx; sxx += dx*dx; sxy += dx*(ys[i]-my); }
+  // Needs at least ~2% SD of SpO2 spread before a slope means anything.
+  if (sxx/n < 4) return null;
+  return -(sxy/sxx);
+}
+
+const RR_ARTIFACT_MAX = 0.05;   // above this the window is reported as unusable, not smoothed
+function liveRmssd(){
+  const a = rrArtifactRate(60);
+  if (a!=null && a > RR_ARTIFACT_MAX) return null;
+  return rmssdOf(rrWindow(60));
+}
+
+/* ============================== wake lock ============================== */
+let wakeLock=null;
+async function requestWakeLock(){ try{ wakeLock = await navigator.wakeLock?.request('screen'); }catch(e){} }
+function releaseWakeLock(){ try{ wakeLock?.release(); wakeLock=null; }catch(e){} }
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && st.running) requestWakeLock(); });
+
+/* ============================== render ============================== */
+function zoneOf(sp){
+  if (sp==null) return null;
+  if (sp<=S.floor) return ['z-alarm','ALARM'];
+  if (sp<=88) return ['z-deep','DEEP'];
+  if (sp<=93) return ['z-mild','MILD'];
+  return ['z-norm','NORMAL'];
+}
+// What the auto-switch is waiting for, in the phase hint line.
+function autoNote(){
+  const on = st.phase==='H' ? S.autoLow : S.autoRec;
+  if (!on) return '';
+  if (st.disarmed) return ` · <span style="color:var(--warn)">auto-switch off — use Next, or it re-arms ${st.phase==='H'?'above':'below'} ${rearmAt()}%</span>`;
+  const hs = holdLive();
+  if (hs > 0) return ` · <b style="color:var(--warn)">holding ${hs.toFixed(1)}/${S.hold}s</b>`;
+  return ` (auto-switch after ${S.hold}s at target)`;
+}
+// A hold with no fresh sample behind it — paused, or the signal dropped — is about to
+// restart, so it stops counting on screen rather than showing a number that will not
+// be honoured. One definition, so the card and the text can never disagree.
+const holdLive = () => (!st.holdSince || st.paused || now()-st.holdLast > 3000) ? 0 : holdSec();
+function render(){
+  const fresh = now()-st.lastSample < 6000;
+  $('vitalsCard').classList.toggle('stale', !fresh);
+  $('spo2').innerHTML = (fresh && st.spo2!=null ? st.spo2 : '--') + '<span class="unit">%</span>';
+  $('pai').textContent = fresh && st.pai!=null ? st.pai.toFixed(1) : '--';
+  // strap beats the oximeter for heart rate — faster and not perfusion-dependent
+  const hf = hrFresh();
+  $('vitalsCard').classList.toggle('hrstale', !(hf || fresh));
+  const hrRR = oxbFresh() && !hf ? hrFromRR(rrWindow(20)) : null;
+  $('hr').textContent = hf && hrv.hr!=null ? hrv.hr
+    : hrRR!=null ? Math.round(hrRR)
+    : (fresh && st.hr!=null ? st.hr : '--');
+  // HRV renders from whichever device is supplying intervals — strap or oximeter.
+  const src = hrvSource();
+  const rm = src ? liveRmssd() : null;
+  $('rmssd').textContent = rm!=null ? Math.round(rm) : '--';
+  const art = src ? rrArtifactRate(60) : null;
+  // Finger-derived intervals are pulse rate variability, not HRV. Say so in the
+  // label rather than letting the number pass as the same measurement.
+  const rlab = src==='oximeter' ? 'PRV RMSSD' : 'RMSSD';
+  $('rmssdLab').textContent = art!=null && art>0.01
+    ? (art>RR_ARTIFACT_MAX ? `${rlab} · ${(art*100).toFixed(0)}% noise — unusable` : `${rlab} · ${(art*100).toFixed(0)}% noise`)
+    : rlab;
+
+  const w60 = src ? rrWindow(60) : [];
+  const sd = src ? sdnnOf(w60) : null;
+  const pn = src ? pnn50Of(w60) : null;
+  $('sdnn').textContent  = sd!=null ? Math.round(sd) : '--';
+  $('pnn50').textContent = pn!=null ? Math.round(pn*100) : '--';
+  // Finger-derived RMSSD, shown whenever the oximeter is streaming — including
+  // alongside a strap, which is the only way to see the two diverge.
+  const oxLive = oxbFresh();
+  const oxw = oxLive ? oxWindow(60) : [];
+  const oxArt = oxLive ? oxArtifactRate(60) : null;
+  const oxRm = (oxLive && !(oxArt>RR_ARTIFACT_MAX)) ? rmssdOf(oxw) : null;
+  $('oxRmssd').textContent = oxRm!=null ? Math.round(oxRm) : '--';
+  $('oxRmssdLab').textContent = !oxLive ? 'PRV finger'
+    : oxArt>RR_ARTIFACT_MAX ? `PRV finger · ${(oxArt*100).toFixed(0)}% noise — unusable`
+    : (src==='strap' && rm!=null && oxRm!=null
+        ? `PRV finger · ${oxRm-rm>=0?'+':''}${Math.round(oxRm-rm)} vs strap`
+        : 'PRV finger');
+
+  const ch = chemoreflexSlope();
+  $('chemo').textContent = ch!=null ? ch.toFixed(2) : '--';
+  $('chemoLab').textContent = ch!=null ? 'chemoreflex' : 'chemoreflex · needs desat';
+  const z = fresh ? zoneOf(st.spo2) : null;
+  $('zoneTag').hidden = !z;
+  if (z){ $('zoneTag').className='zone '+z[0]; $('zoneTag').textContent=z[1]; }
+
+  const pc = $('phaseCard');
+  pc.classList.toggle('ph-H', st.phase==='H');
+  pc.classList.toggle('ph-R', st.phase==='R');
+  // Say out loud what the auto-switch is doing — a countdown you can watch is the
+  // difference between trusting the switch and pulling the mask off yourself.
+  pc.classList.toggle('holding', holdLive()>0 && !st.disarmed);
+  if (st.running){
+    const ps = phaseSec();
+    if (ps < 0){
+      $('phaseName').textContent = (st.phase==='H'?'MASK ON':'MASK OFF') + ' IN' + (st.paused?' · PAUSED':'');
+      $('phaseTimer').textContent = Math.ceil(-ps);
+      $('barFill').style.width = '0%';
+    } else {
+      $('phaseName').textContent = (st.phase==='H'?'HYPOXIC':'RECOVERY') + (st.paused?' · PAUSED':'');
+      $('phaseTimer').textContent = fmt(Math.max(0, st.phaseDur-ps));
+      $('barFill').style.width = (100*Math.max(0,Math.min(1,ps/st.phaseDur)))+'%';
+    }
+    $('cycleLab').textContent = `cycle ${st.cycle}/${S.cycles}`;
+    $('targetHint').innerHTML = st.signalLost
+      ? `<span style="color:var(--crit-text);font-weight:600">⚠ SpO₂ signal lost — cannot monitor. Check the sensor or take the mask off.</span>`
+      : st.phase==='H'
+        ? `mask on — target ≤ ${S.low}%${autoNote()} · floor ${S.floor}%`
+        : `mask off — recover toward ${S.recd}%${autoNote()}`;
+  } else {
+    $('phaseName').textContent = st.done ? 'DONE' : 'READY';
+    $('phaseTimer').textContent = st.done ? fmt(sessionSec()) : fmt(S.hyp*60);
+    if(!st.done) $('barFill').style.width='0%';
+    $('cycleLab').textContent = st.done ? `cycle ${st.cycle}/${S.cycles}` : `cycle –/${S.cycles}`;
+    if (!st.done){
+      const w = st.startArmed ? startWarnings() : [];
+      $('targetHint').innerHTML = w.length
+        ? `<span style="color:var(--warn);font-weight:600">⚠ ${w.join('<br>⚠ ')}<br>press Start again to run anyway</span>`
+        : (st.lastSample ? 'ready — Start begins cycle 1 (mask on)' : 'connect the oximeter, or enable simulate in settings');
+    }
+  }
+  $('sessLab').textContent = fmt(sessionSec());
+
+  $('btnStart').disabled = st.running;
+  $('btnStart').textContent = st.startArmed && !st.running ? 'Start anyway'
+    : st.done ? 'New session' : 'Start session';
+  $('btnPause').disabled = !st.running;
+  $('btnPause').textContent = st.paused ? 'Resume' : 'Pause';
+  $('btnUndo').disabled = !st.running || !st.undo.length;
+  $('btnUndo').textContent = st.undo.length && st.undo.at(-1).phase==='R'
+    ? '↶ Back to recovery' : '↶ Back to hypoxia';
+  $('btnSkip').disabled = !st.running;
+  $('btnSkip').textContent = !st.running || st.phase==='H' ? 'Mask off now ▸'
+    : st.cycle >= S.cycles ? 'Finish ▸' : 'Mask on now ▸';
+  $('btnEnd').disabled = !st.running;
+  $('btnCsv').disabled = st.samples.length===0;
+$('btnRaw').onclick = ()=> exportRaw();
+
+  $('livecheck').hidden = !st.liveWait;
+  const al = st.alarm && now()>st.alarmSilencedUntil;
+  $('alarm').hidden = !al;
+  if (al) $('alarmSpo2').textContent = (st.spo2??'--')+'%';
+
+  drawChart();
+}
+
+/* ============================== history ============================== */
+const HIST_KEY='ihht.history.v1';
+const loadHistory = ()=>{ try{ return JSON.parse(localStorage.getItem(HIST_KEY)||'[]'); }catch(e){ return []; } };
+const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+function sessionStats(){
+  const spv = st.samples.filter(x=>x.sp!=null);
+  if (!spv.length) return null;
+  let under90=0, load=0, dti=0;
+  for (let i=1;i<spv.length;i++){
+    const dt = Math.min(3, spv[i].s-spv[i-1].s);
+    if (spv[i].sp<90){ under90+=dt; load += (90-spv[i].sp)*dt; }
+    if (spv[i].sp<95) dti += (95-spv[i].sp)*dt;        // works at conservative targets too
+  }
+  return {
+    minSpo2: Math.min(...spv.map(x=>x.sp)),
+    under90: Math.round(under90),
+    load: +(load/60).toFixed(1),                       // %·min below 90 (literature standard)
+    dti:  +(dti/60).toFixed(1),                        // %·min below 95 — non-zero at any dose
+    desat: avg(st.cycles.filter(c=>c.hyp?.desat!=null).map(c=>c.hyp.desat)),
+    r60:   avg(st.cycles.filter(c=>c.rec?.r60!=null).map(c=>c.rec.r60)),
+    tTo95: avg(st.cycles.filter(c=>c.rec?.tTo95!=null).map(c=>c.rec.tTo95)),
+    thalf: avg(st.cycles.filter(c=>c.rec?.thalf!=null).map(c=>c.rec.thalf)),
+    rmssdH: avg(st.samples.filter(x=>x.rm!=null&&x.ph==='H').map(x=>x.rm)),
+    rmssdR: avg(st.samples.filter(x=>x.rm!=null&&x.ph==='R').map(x=>x.rm)),
+  };
+}
+/* ---------------- raw archive ----------------
+   The summary history keeps derived numbers only, which locks in whatever
+   definitions were current when a session ran. This stores the underlying beat
+   intervals and the per-second trace so any metric can be recomputed later —
+   different window, different artifact policy, a corrected interval unit.
+
+   Kept per session under its own key rather than one blob, so a quota failure
+   costs the oldest session instead of the whole archive. Intervals are stored
+   as parallel integer arrays (offset ms, interval ms) — roughly a third the
+   size of objects, and a 30-minute session lands near 60 KB per source. */
+const RAW_PREFIX = 'ihht.raw.v1.';
+const RAW_INDEX  = 'ihht.rawindex.v1';
+const RAW_KEEP   = 12;
+
+const rawIndex = ()=> { try{ return JSON.parse(localStorage.getItem(RAW_INDEX)||'[]'); }catch(e){ return []; } };
+function packRR(buf, t0){
+  const out = {t:[], ms:[], cont:[]};
+  for (const x of buf){ out.t.push(Math.round(x.t-t0)); out.ms.push(Math.round(x.ms)); out.cont.push(x.cont?1:0); }
+  return out;
+}
+function saveRaw(){
+  const id = new Date(st.sessionStart).toISOString();
+  const t0 = st.sessionStart;
+  const payload = {
+    v:1, at:id, dur:Math.round(sessionSec()),
+    proto:{cycles:S.cycles,hyp:S.hyp,rec:S.rec,low:S.low,recd:S.recd,floor:S.floor,lead:S.lead,hold:S.hold,margin:S.margin},
+    phaseLog:st.phaseLog, cycles:st.cycles, abortNote:st.abortNote,
+    // Interval unit is recorded because it is calibrated, not a constant — without
+    // it the finger intervals cannot be re-derived from raw counts later.
+    oximeter:{unit_ms:+(oxb.unit*1000).toFixed(4), calBy:oxb.calBy, rejected:oxb.rejected},
+    rr:{ strap:packRR(hrv.rr, t0), finger:packRR(oxrr.rr, t0) },
+    samples:st.samples.map(x=>[x.s,x.ph,x.cy,x.sp,x.hr,x.pai,x.shr,
+                               x.rm!=null?+x.rm.toFixed(1):null,
+                               x.orm!=null?+x.orm.toFixed(1):null])
+  };
+  let idx = rawIndex().filter(x=>x!==id).concat(id);
+  // Evict oldest until it fits — a full disk must never cost the current session.
+  for (let attempt=0; attempt<RAW_KEEP+2; attempt++){
+    while (idx.length > RAW_KEEP){
+      const drop = idx.shift();
+      try{ localStorage.removeItem(RAW_PREFIX+drop); }catch(e){}
+    }
+    try{
+      localStorage.setItem(RAW_PREFIX+id, JSON.stringify(payload));
+      localStorage.setItem(RAW_INDEX, JSON.stringify(idx));
+      dlog(`raw archived: ${hrv.rr.length} strap + ${oxrr.rr.length} finger intervals, ${st.samples.length} samples`);
+      return true;
+    }catch(e){
+      if (idx.length <= 1){ dlog('raw archive failed: '+e.name); return false; }
+      const drop = idx.shift();
+      try{ localStorage.removeItem(RAW_PREFIX+drop); }catch(_){}
+    }
+  }
+  return false;
+}
+function loadRaw(id){
+  try{ return JSON.parse(localStorage.getItem(RAW_PREFIX+id)||'null'); }catch(e){ return null; }
+}
+function exportRaw(id){
+  const r = loadRaw(id || rawIndex().slice(-1)[0]);
+  if (!r){ alert('no raw session stored yet'); return; }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(r)],{type:'application/json'}));
+  a.download='iht_raw_'+r.at.replace(/[:.]/g,'-')+'.json'; a.click(); URL.revokeObjectURL(a.href);
+}
+
+function saveSession(){
+  try{
+    if (st.simUsed){ dlog('simulated session — not stored in history'); return; }
+    const s = sessionStats();
+    if (!s) return;
+    const h = loadHistory();
+    h.push({at:new Date(st.sessionStart).toISOString(), dur:Math.round(sessionSec()),
+            proto:{cycles:S.cycles,hyp:S.hyp,rec:S.rec,low:S.low,floor:S.floor},
+            ...s, cycles:st.cycles});
+    localStorage.setItem(HIST_KEY, JSON.stringify(h.slice(-200)));
+    saveRaw();
+    // Keep the last session's full per-second trace so it can be re-analysed
+    // (and survives a reload) without depending on a CSV download.
+    localStorage.setItem('ihht.lastsamples', JSON.stringify({
+      at:new Date(st.sessionStart).toISOString(),
+      proto:{cycles:S.cycles,hyp:S.hyp,rec:S.rec,low:S.low,floor:S.floor,lead:S.lead},
+      phaseLog:st.phaseLog, cycles:st.cycles, abortNote:st.abortNote,
+      samples:st.samples.map(x=>[x.s,x.ph,x.cy,x.sp,x.hr,x.pai,x.shr,x.rm!=null?+x.rm.toFixed(1):null])
+    }));
+  }catch(e){ console.warn('history save failed', e); }
+}
+// Only sessions run at the SAME per-cycle dose are comparable — a nadir from a
+// 5-min/85% cycle says nothing about one from a 3-min/92% cycle.
+const sameDose = r => r.proto && r.proto.hyp===S.hyp && r.proto.rec===S.rec && r.proto.low===S.low;
+
+// Sparkline: oldest → newest, left → right.
+function sparkSvg(vals, color, w=138, h=34){
+  const v = vals.filter(x=>x!=null);
+  if (v.length<2) return '<div class="nospark">2+ sessions needed</div>';
+  const mn=Math.min(...v), mx=Math.max(...v), rng=(mx-mn)||1;
+  const X=i=>3+i*(w-6)/(v.length-1), Y=x=>4+(h-8)*(1-(x-mn)/rng);
+  const d=v.map((x,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(x).toFixed(1)}`).join(' ');
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">`+
+    `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`+
+    `<circle cx="${X(v.length-1).toFixed(1)}" cy="${Y(v.at(-1)).toFixed(1)}" r="3" fill="${color}"/></svg>`;
+}
+const TRENDS = [
+  {k:'minSpo2', label:'min SpO₂',        unit:'%',    dp:0, c:'--spo2'},
+  {k:'desat',   label:'desaturation',    unit:'%/min',dp:2, c:'--hrv'},
+  {k:'r60',     label:'recovery slope',  unit:'pts/min',dp:1, c:'--hrc'},
+  {k:'tTo95',   label:'time to 95%',     unit:'s',    dp:0, c:'--hrc'},
+  {k:'dti',     label:'desat integral',  unit:'%·min',dp:1, c:'--spo2'},
+  {k:'load',    label:'load <90%',       unit:'%·min',dp:1, c:'--spo2'},
+  {k:'rmssdH',  label:'RMSSD hypoxic',   unit:'ms',   dp:0, c:'--hrc'},
+  {k:'rmssdR',  label:'RMSSD recovery',  unit:'ms',   dp:0, c:'--hrv'},
+];
+function renderTrends(rows){
+  const el=$('trends');
+  if (rows.length<2){ el.innerHTML=''; return; }
+  const cssv = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  el.innerHTML = TRENDS.map(t=>{
+    const series = rows.map(r=>r[t.k]).filter(x=>x!=null);
+    if (series.length<2) return '';
+    const n = Math.min(3, Math.floor(series.length/2)) || 1;
+    const first = avg(series.slice(0,n)), last = avg(series.slice(-n));
+    const f = x => (+x).toFixed(t.dp);
+    const dRaw = last-first;
+    const arrow = Math.abs(dRaw) < Math.abs(first)*0.02 ? '→' : (dRaw>0?'↑':'↓');
+    return `<div class="trend"><div class="tl">${t.label}</div>`+
+      `<div class="tv">${f(first)} ${arrow} <b>${f(last)}</b> <span style="color:var(--muted)">${t.unit}</span></div>`+
+      sparkSvg(series, cssv(t.c))+`</div>`;
+  }).join('');
+}
+function renderHistory(){
+  const all = loadHistory();
+  const filt = $('histFilter').value;
+  const rows = filt==='match' ? all.filter(sameDose) : all;   // chronological
+  const el = $('histBody');
+  renderTrends(rows);
+  if (!all.length){ el.innerHTML='<div class="hint">No completed sessions yet.</div>'; return; }
+  if (!rows.length){ el.innerHTML=`<div class="hint">No sessions at the current dose (${S.hyp}/${S.rec} min, target ${S.low}%). Switch to “all sessions”.</div>`; return; }
+  const n1 = v => v==null ? '–' : (+v).toFixed(1);
+  el.innerHTML =
+    `<table class="htab"><thead><tr><th>date</th><th>dose</th><th>min</th>`+
+    `<th title="%·min accumulated below 90%">load</th>`+
+    `<th title="mean desaturation slope">desat</th>`+
+    `<th title="mean time to recover half the deficit">t½</th>`+
+    `<th>RMSSD H/R</th><th></th></tr></thead><tbody>`+
+    rows.slice().reverse().map(r=>{
+      const d=new Date(r.at), p2n=n=>String(n).padStart(2,'0');
+      return `<tr><td>${d.toLocaleDateString(undefined,{month:'short',day:'numeric'})} `+
+        `${p2n(d.getHours())}:${p2n(d.getMinutes())}</td>`+
+        `<td>${r.proto?`${r.proto.cycles}×${r.proto.hyp}/${r.proto.rec} @${r.proto.low}%`:'–'}</td>`+
+        `<td>${r.minSpo2??'–'}%</td><td>${n1(r.load)}</td>`+
+        `<td>${r.desat!=null?n1(r.desat):'–'}</td>`+
+        `<td>${r.thalf!=null?n1(r.thalf):'–'}</td>`+
+        `<td>${r.rmssdH!=null?Math.round(r.rmssdH):'–'} / ${r.rmssdR!=null?Math.round(r.rmssdR):'–'}</td>`+
+        `<td><span class="delrow" data-at="${r.at}" title="delete this session">×</span></td></tr>`;
+    }).join('') + '</tbody></table>';
+  el.querySelectorAll('.delrow').forEach(x=>x.addEventListener('click',()=>{
+    const keep = loadHistory().filter(r=>r.at!==x.dataset.at);
+    localStorage.setItem(HIST_KEY, JSON.stringify(keep));
+    renderHistory();
+  }));
+}
+function exportHistory(){
+  const h = loadHistory();
+  if (!h.length) return;
+  let csv='date,cycles,hyp_min,rec_min,target,floor,duration_s,min_spo2,under90_s,load_pct_min,desat_pct_min,resat_thalf_s,rmssd_hyp,rmssd_rec\n';
+  for (const r of h)
+    csv += `${r.at},${r.proto?.cycles??''},${r.proto?.hyp??''},${r.proto?.rec??''},${r.proto?.low??''},`+
+           `${r.proto?.floor??''},${r.dur??''},${r.minSpo2??''},${r.under90??''},${r.load??''},`+
+           `${r.desat!=null?r.desat.toFixed(3):''},${r.thalf??''},`+
+           `${r.rmssdH!=null?r.rmssdH.toFixed(1):''},${r.rmssdR!=null?r.rmssdR.toFixed(1):''}\n`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download='iht_history.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ============================== summary ============================== */
+function showSummary(){
+  const sm = $('summary'); sm.hidden=false;
+  const sp = st.samples.filter(x=>x.sp!=null);
+  if (!sp.length){ sm.innerHTML='No SpO₂ data recorded.'; return; }
+  const minS = Math.min(...sp.map(x=>x.sp));
+  const hrV  = st.samples.map(x=>x.shr ?? x.hr).filter(v=>v!=null);
+  let under90=0, load=0;
+  for (let i=1;i<sp.length;i++){
+    const dt = Math.min(3, sp[i].s-sp[i-1].s);
+    if (sp[i].sp<90){ under90+=dt; load += (90-sp[i].sp)*dt; }
+  }
+  const mins = st.cycles.filter(c=>c.hyp).map(c=>`C${c.n} ${c.hyp.nadir}%`).join(' · ') || '—';
+  // HRV split by phase — hypoxia drives sympathetic activation (RMSSD falls),
+  // recovery should rebound it. The ratio is the autonomic response to the dose.
+  const rmH = st.samples.filter(x=>x.rm!=null && x.ph==='H').map(x=>x.rm);
+  const rmR = st.samples.filter(x=>x.rm!=null && x.ph==='R').map(x=>x.rm);
+  const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+  const mH=avg(rmH), mR=avg(rmR);
+
+  sm.innerHTML =
+    `cycles <b>${st.cycles.filter(c=>c.hyp).length}/${S.cycles}</b> · duration <b>${fmt(sessionSec())}</b><br>` +
+    `min SpO₂ <b>${minS}%</b> · per-cycle: ${mins}<br>` +
+    `time &lt;90%: <b>${fmt(under90)}</b> · load &lt;90% <b>${(load/60).toFixed(1)}</b> · ` +
+    `desat integral <b>${(sessionStats()?.dti ?? 0)} %·min</b>` +
+    (hrV.length? `<br>pulse avg <b>${Math.round(avg(hrV))}</b> · max <b>${Math.max(...hrV)}</b> bpm`:'') +
+    (mH!=null&&mR!=null
+      ? `<br>RMSSD hypoxic <b>${Math.round(mH)}</b> ms · recovery <b>${Math.round(mR)}</b> ms `+
+        `(rebound <b>${(mR/mH).toFixed(2)}×</b>)`
+      : (mH!=null||mR!=null ? `<br>RMSSD <b>${Math.round(mH??mR)}</b> ms` : '')) +
+    (hrv.total ? `<br><span style="color:var(--muted)">RR beats ${hrv.total}, ${((hrv.rejected/hrv.total)*100).toFixed(1)}% rejected as artifact</span>` : '') +
+    (st.abortNote ? `<br><span style="color:var(--crit-text)">⚠ safety stop: ${st.abortNote}</span>` : '') +
+    `<br><span style="color:var(--muted)">No driving or machinery for 4 h; effects can linger 12 h.</span>`;
+}
+
+/* ============================== chart ============================== */
+/* ---------------- chart source ----------------
+   The chart used to read st.* directly, which meant it could only ever draw the
+   session currently running. It now draws whatever `chartSrc()` returns, so an
+   archived session renders through exactly the same code path — no second
+   renderer to drift out of sync with the live one. */
+let viewing = null;   // null = live session, else a decoded raw archive
+
+function chartSrc(){
+  if (!viewing) return {
+    samples: st.samples, phaseLog: st.phaseLog, proto: S,
+    live: st.running, elapsed: sessionSec(), done: st.done, label: null
+  };
+  const v = viewing;
+  return {
+    samples: v.samples.map(a=>({s:a[0], ph:a[1], cy:a[2], sp:a[3], hr:a[4], pai:a[5],
+                                shr:a[6], rm:a[7], orm:a[8]})),
+    phaseLog: v.phaseLog||[], proto: v.proto||S,
+    live:false, elapsed: v.dur||0, done:true,
+    label: new Date(v.at).toLocaleString()
+  };
+}
+function viewSession(id){
+  const r = loadRaw(id);
+  if (!r){ alert('No raw trace stored for that session.\n\nOnly sessions recorded since raw archiving was added have one.'); return; }
+  viewing = r;
+  $('histPanel')?.setAttribute('hidden','');
+  $('chartBanner').hidden = false;
+  $('chartBannerText').textContent = 'Reviewing ' + chartSrc().label;
+  drawChart();
+}
+function viewLive(){ viewing=null; $('chartBanner').hidden = true; drawChart(); }
+
+const cv = $('chart'), ctx = cv.getContext('2d');
+const CSS = getComputedStyle(document.documentElement);
+const col = v => CSS.getPropertyValue(v).trim();
+function drawChart(){
+  const dpr = window.devicePixelRatio||1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (!W) return;
+  if (cv.width!==W*dpr||cv.height!==H*dpr){ cv.width=W*dpr; cv.height=H*dpr; }
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const mL=36, mR=8, mT=6, mB=16, gap=13;
+  const plotW = W-mL-mR, plotH = H-mT-mB;
+  const SRC = chartSrc();
+  const sp = SRC.samples;
+  const P = SRC.proto;
+  const pulseOf = p => p.shr ?? p.hr;              // strap wins; oximeter PR is the fallback
+  const hasHrv = sp.some(p=>p.rm!=null);
+  const nS = hasHrv?3:2, avail = plotH - gap*(nS-1);
+  const h1 = Math.round(avail*(hasHrv?0.48:0.66));
+  const h2 = Math.round(avail*(hasHrv?0.27:0.34));
+  const h3 = hasHrv ? avail-h1-h2 : 0;
+  const y1T=mT, y2T=mT+h1+gap, y3T=y2T+h2+gap;
+  const botY = hasHrv ? y3T+h3 : y2T+h2;
+
+  const el = SRC.elapsed;
+  const xMax = Math.max(60, Math.ceil((SRC.done? (sp.at(-1)?.s||el) : el)/60)*60);
+  const X = s => mL + plotW*Math.min(1,s/xMax);
+
+  let spMin = 88;
+  for (const p of sp) if (p.sp!=null && p.sp<spMin) spMin=p.sp;
+  const yLo = Math.min(70, Math.floor((Math.min(spMin,P.floor)-3)/5)*5);
+  const Y1 = v => y1T + h1*(1-(v-yLo)/(100-yLo));
+  const hrs = sp.map(pulseOf).filter(v=>v!=null);
+  const hLo = Math.floor(((hrs.length?Math.min(...hrs):55)-6)/10)*10;
+  const hHi = Math.ceil(((hrs.length?Math.max(...hrs):100)+6)/10)*10;
+  const Y2 = v => y2T + h2*(1-(v-hLo)/(hHi-hLo));
+  const rms = sp.filter(p=>p.rm!=null).map(p=>p.rm);
+  const rHi = Math.max(20, Math.ceil((rms.length?Math.max(...rms):50)*1.15/10)*10);
+  const Y3 = v => y3T + h3*(1-v/rHi);
+
+  // hypoxic phase bands (both strips)
+  ctx.fillStyle='rgba(57,135,229,.10)';
+  for (let i=0;i<SRC.phaseLog.length;i++){
+    const e0=SRC.phaseLog[i];
+    if (e0.ph!=='H') continue;
+    const s1 = i+1<SRC.phaseLog.length ? SRC.phaseLog[i+1].s0 : (SRC.done? xMax : el);
+    ctx.fillRect(X(e0.s0), y1T, Math.max(1,X(Math.min(s1,xMax))-X(e0.s0)), plotH);
+  }
+
+  // grid + labels
+  ctx.font='10px system-ui'; ctx.fillStyle=col('--muted'); ctx.strokeStyle=col('--grid'); ctx.lineWidth=1;
+  ctx.textAlign='right'; ctx.textBaseline='middle';
+  for (let v=yLo; v<=100; v+=10){
+    ctx.beginPath(); ctx.moveTo(mL,Y1(v)+.5); ctx.lineTo(W-mR,Y1(v)+.5); ctx.stroke();
+    ctx.fillText(v, mL-5, Y1(v));
+  }
+  for (const v of [hLo,hHi]){
+    ctx.beginPath(); ctx.moveTo(mL,Y2(v)+.5); ctx.lineTo(W-mR,Y2(v)+.5); ctx.stroke();
+    ctx.fillText(v, mL-5, Y2(v));
+  }
+  if (hasHrv) for (const v of [0,rHi]){
+    ctx.beginPath(); ctx.moveTo(mL,Y3(v)+.5); ctx.lineTo(W-mR,Y3(v)+.5); ctx.stroke();
+    ctx.fillText(v, mL-5, Y3(v));
+  }
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  const step = xMax<=900?60 : xMax<=1800?300 : 600;
+  for (let s=0;s<=xMax;s+=step){
+    ctx.fillText(s/60+'m', X(s), botY+4);
+    ctx.beginPath(); ctx.moveTo(X(s)+.5,botY); ctx.lineTo(X(s)+.5,botY+3); ctx.stroke();
+  }
+  ctx.textAlign='left'; ctx.fillStyle=col('--muted');
+  ctx.fillText('SpO₂ %', mL+4, y1T+2);
+  ctx.fillText('PULSE bpm', mL+4, y2T+2);
+  if (hasHrv) ctx.fillText('RMSSD ms', mL+4, y3T+2);
+
+  // threshold lines (status colors + labels)
+  const thr=(v,color,lab)=>{
+    ctx.strokeStyle=color; ctx.setLineDash([4,4]); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(mL,Y1(v)+.5); ctx.lineTo(W-mR,Y1(v)+.5); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=color; ctx.textAlign='right'; ctx.textBaseline='bottom';
+    ctx.fillText(lab, W-mR-2, Y1(v)-1);
+    ctx.textAlign='left'; ctx.textBaseline='top';
+  };
+  thr(P.low, col('--warn'), 'target '+P.low);
+  thr(P.floor, col('--crit'), 'floor '+P.floor);
+
+  // series
+  const line=(get, Yf, color)=>{
+    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.beginPath(); let pen=false;
+    for (const p of sp){
+      const v=get(p);
+      if (v==null){ pen=false; continue; }
+      const x=X(p.s), y=Yf(v);
+      if (!pen){ ctx.moveTo(x,y); pen=true; } else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  };
+  line(p=>p.sp, Y1, col('--spo2'));
+  line(pulseOf, Y2, col('--hrc'));
+  if (hasHrv) line(p=>p.rm, Y3, col('--hrv'));
+
+  // live dot
+  const last = sp.at(-1);
+  if (last && SRC.live){
+    if (last.sp!=null){ ctx.fillStyle=col('--spo2'); ctx.beginPath(); ctx.arc(X(last.s),Y1(last.sp),3.5,0,7); ctx.fill(); }
+    const lp = pulseOf(last);
+    if (lp!=null){ ctx.fillStyle=col('--hrc'); ctx.beginPath(); ctx.arc(X(last.s),Y2(lp),3,0,7); ctx.fill(); }
+    if (hasHrv && last.rm!=null){ ctx.fillStyle=col('--hrv'); ctx.beginPath(); ctx.arc(X(last.s),Y3(last.rm),3,0,7); ctx.fill(); }
+  }
+
+  // hover crosshair
+  if (st.hoverSec!=null && sp.length){
+    let best=sp[0], bd=1e9;
+    for (const p of sp){ const d=Math.abs(p.s-st.hoverSec); if(d<bd){bd=d;best=p;} }
+    if (bd<20){
+      const x=X(best.s);
+      ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(x+.5,mT); ctx.lineTo(x+.5,mT+plotH); ctx.stroke();
+      if (best.sp!=null){ ctx.fillStyle=col('--spo2'); ctx.beginPath(); ctx.arc(x,Y1(best.sp),4,0,7); ctx.fill(); ctx.strokeStyle=col('--surface'); ctx.lineWidth=2; ctx.beginPath(); ctx.arc(x,Y1(best.sp),4,0,7); ctx.stroke(); }
+      const bp = pulseOf(best);
+      if (bp!=null){ ctx.fillStyle=col('--hrc'); ctx.beginPath(); ctx.arc(x,Y2(bp),3.5,0,7); ctx.fill(); }
+      if (hasHrv && best.rm!=null){ ctx.fillStyle=col('--hrv'); ctx.beginPath(); ctx.arc(x,Y3(best.rm),3.5,0,7); ctx.fill(); }
+      const tip=$('tip');
+      tip.hidden=false;
+      tip.innerHTML=`<b>${fmt(best.s)}</b> · ${best.ph==='H'?'hypoxic':'recovery'} C${best.cy}<br>`+
+        `SpO₂ <b>${best.sp??'–'}%</b> · pulse <b>${bp??'–'}</b>`+
+        (best.rm!=null ? ` · RMSSD <b>${Math.round(best.rm)}</b>` : '');
+      const rect=cv.getBoundingClientRect();
+      tip.style.left=Math.min(rect.width-150, Math.max(0,(x-40)))+'px';
+      tip.style.top='14px';
+    } else $('tip').hidden=true;
+  } else $('tip').hidden=true;
+}
+cv.addEventListener('mousemove', e=>{
+  const r=cv.getBoundingClientRect();
+  const mL=36, plotW=r.width-36-8;
+  const el=sessionSec();
+  const xMax=Math.max(60, Math.ceil((st.done? (st.samples.at(-1)?.s||el):el)/60)*60);
+  st.hoverSec=(e.clientX-r.left-mL)/plotW*xMax;
+  drawChart();
+});
+cv.addEventListener('mouseleave', ()=>{ st.hoverSec=null; drawChart(); });
+window.addEventListener('resize', drawChart);
+
+/* ============================== export ============================== */
+function exportCsv(){
+  if (!st.samples.length) return;
+  let csv='time_iso,session_s,phase,cycle,spo2,pulse_ox,pai,hr_strap,rmssd_ms\n';
+  for (const p of st.samples)
+    csv+=`${new Date(p.t).toISOString()},${p.s},${p.ph},${p.cy},${p.sp??''},${p.hr??''},`+
+         `${p.pai??''},${p.shr??''},${p.rm!=null?p.rm.toFixed(1):''}\n`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  const d=new Date(st.sessionStart||Date.now());
+  const pad=n=>String(n).padStart(2,'0');
+  a.download=`iht_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ============================== controls ============================== */
+$('btnStart').onclick=()=>startSession();
+$('btnPause').onclick=togglePause;
+$('btnSkip').onclick=()=>advance('skip');
+$('btnUndo').onclick=undoSwitch;
+$('btnEnd').onclick=endSession;
+$('btnCsv').onclick=exportCsv;
+$('btnHist').onclick = ()=> togglePanel('hist');
+$('histFilter').onchange = renderHistory;
+$('btnHistCsv').onclick = exportHistory;
+$('btnHistClear').onclick = ()=>{
+  const n = loadHistory().length;
+  if (!n) return;
+  if (confirm(`Delete all ${n} stored session${n>1?'s':''}? This cannot be undone.`)){
+    localStorage.removeItem(HIST_KEY); renderHistory();
+  }
+};
+$('btnSync').onclick = po60Sync;
+$('btnTx').onclick = ()=>{
+  const s = $('dbgHex').value.trim().replace(/0x/gi,'').replace(/[^0-9a-fA-F ]/g,' ');
+  const bytes = s.split(/\s+/).filter(Boolean).map(x=>parseInt(x,16)).filter(x=>!isNaN(x)&&x<=255);
+  if (bytes.length) po60Tx(bytes);
+};
+$('dbgHex').addEventListener('keydown', e=>{ if(e.key==='Enter') $('btnTx').click(); });
+$('btnLive').onclick = liveAck;
+document.addEventListener('pointerdown', ()=>{ if (st.liveWait) liveAck(); }, true);
+document.addEventListener('keydown', e=>{
+  if (e.target.tagName==='INPUT') return;
+  if (st.liveWait && liveAck()){ e.preventDefault(); return; }
+  if (e.code==='Space'){ e.preventDefault(); st.running? togglePause() : startSession(); }
+  if (e.key==='n' && st.running) advance('skip');
+  if (e.key==='u' && st.running) undoSwitch();
+  if (e.key==='d') togglePanel('dbg');
+  if (e.key==='Escape') PANELS.forEach(p=>{ const el=$(p); if(el) el.hidden=true; });
+});
+// The chart is the flexible row — redraw whenever the layout hands it a new box.
+if (window.ResizeObserver) new ResizeObserver(()=>drawChart()).observe(cv);
+render();
+</script>
+</body>
+</html>
